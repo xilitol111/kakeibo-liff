@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>定期収支</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-Ae2dYXxD';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --success-bg: #E4F7EC;
+      --switch-bg: #F2FBF6; --switch-border: #B9EBCD; --switch-ink: #5B9E78;
+      --label-muted: #4A5A4E; --fixed-bg: #FFF1E0; --fixed-ink: #A15C07;
+      --req-bg: #e5484d; --opt-bg: #eee; --opt-ink: #666;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --success-bg: #163627;
+        --switch-bg: #14231A; --switch-border: #2B4A38; --switch-ink: #6FCF9A;
+        --label-muted: #9AA6A0; --fixed-bg: #3A2A10; --fixed-ink: #E3A15C;
+        --req-bg: #C94A4F; --opt-bg: #2B332F; --opt-ink: #9AA6A0;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    label .required { color: #fff; background: var(--req-bg); font-size: 11px; font-weight: normal; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+    label .optional { color: var(--opt-ink); background: var(--opt-bg); font-size: 11px; font-weight: normal; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+    select, input[type="text"], input[type="number"], input[type="date"], input[type="month"] { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 16px; background: var(--panel); color: var(--ink); border: 1px solid var(--border); }
+    button { width: 100%; padding: 12px; margin-top: 20px; font-size: 16px; background: var(--accent); color: white; border: none; border-radius: 6px; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); }
+    button.danger { background: transparent; color: var(--danger); border: 1.5px solid var(--danger); }
+    .item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .pill { font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 100px; background: var(--success-bg); color: var(--accent-ink); }
+    .pill.off { background: var(--accent-soft); color: var(--faint); }
+    .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 6px; }
+    @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    .skel-item { height: 44px; margin-bottom: 4px; }
+    a.backLink { display: inline-block; margin-bottom: 12px; font-size: 12px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .muted { font-size: 12px; color: var(--faint); margin-top: -8px; }
+    .rowB { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+    .rowB .sum { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; cursor: pointer; }
+    .rowB .sum .left { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .rowB .sum .gname { font-weight: bold; font-size: 14.5px; }
+    .rowB .sum .right { text-align: right; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .rowB .sum .amt { font-weight: bold; font-size: 14px; }
+    .rowB .chev { color: var(--faint); font-size: 12px; transition: transform 0.15s ease; }
+    .rowB.open .chev { transform: rotate(90deg); }
+    .rowB .body { display: none; padding: 0 12px 12px; border-top: 1px solid var(--border); }
+    .rowB.open .body { display: block; padding-top: 10px; }
+    .modePill { font-size: 11px; font-weight: bold; padding: 2px 7px; border-radius: 100px; white-space: nowrap; }
+    .modePill.auto { background: var(--accent-soft); color: var(--label-muted); }
+    .modePill.fixed { background: var(--fixed-bg); color: var(--fixed-ink); }
+    .modePill.ratio { background: var(--success-bg); color: var(--accent-ink); }
+    .gmeta { font-size: 12px; color: var(--faint); margin-top: 2px; }
+    .rowToast { font-size: 12.5px; text-align: center; margin-bottom: 8px; min-height: 1px; }
+    .rowToast.ok { color: var(--accent-ink); font-weight: bold; }
+    .rowToast.err { color: var(--danger); font-weight: bold; }
+    .rowB table { width: 100%; font-size: 13px; border-collapse: collapse; margin-top: 4px; }
+    .rowB th, .rowB td { padding: 5px 3px; text-align: right; }
+    .rowB th:first-child, .rowB td:first-child { text-align: left; }
+    .rowB thead th { color: var(--faint); font-weight: normal; border-bottom: 1px solid var(--border); }
+    .rowB tfoot td { font-weight: bold; border-top: 1px solid var(--border); }
+    .rowB tbody tr.rowClick { cursor: pointer; }
+    .rowB tbody tr.inactive { opacity: 0.45; }
+    .seg { display: flex; background: var(--accent-soft); border-radius: 8px; padding: 3px; margin-bottom: 10px; }
+    .seg button { flex: 1; width: auto; font-size: 12.5px; font-weight: bold; padding: 7px; margin-top: 0; border: none; border-radius: 6px; background: transparent; color: var(--label-muted); }
+    .seg button.active { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+    .segPane { display: none; }
+    .segPane.active { display: block; }
+    .modeChoiceMini { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .modeChoiceMini button { width: auto; font-size: 11.5px; font-weight: bold; padding: 6px 10px; margin-top: 0; border-radius: 100px; border: 1.4px solid var(--border); background: var(--panel); color: var(--faint); }
+    .modeChoiceMini button.active { background: var(--success-bg); border-color: var(--accent); color: var(--accent-ink); }
+    .ratioRow { display: flex; justify-content: space-between; font-size: 13px; margin-top: 6px; color: var(--label-muted); }
+    .fld { margin-top: 8px; }
+    .fld label { font-size: 11px; margin-top: 0; color: var(--label-muted); }
+    .fldRow { display: flex; gap: 8px; }
+    .fldRow .fld { flex: 1; }
+    .itemForm { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+    .btnRow { display: flex; gap: 8px; margin-top: 10px; }
+    .btnRow button { flex: 1; width: auto; margin-top: 0; padding: 9px; font-size: 13px; }
+    .fab { display: block; width: 100%; text-align: center; font-weight: bold; font-size: 13px; padding: 10px; border-radius: 8px; border: 1.5px dashed var(--border); background: transparent; color: var(--faint); margin-top: 10px; }
+    .switchRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 10px 12px; background: var(--switch-bg); border: 1px solid var(--switch-border); border-radius: 10px; }
+    .switchRow .switchLabel { font-size: 12.5px; font-weight: bold; color: var(--accent-ink); }
+    .switchRow .switchSub { font-size: 10.5px; color: var(--switch-ink); margin-top: 2px; }
+    .toggleWrap { position: relative; display: inline-block; width: 40px; height: 22px; flex: none; }
+    .toggleWrap input { opacity: 0; width: 0; height: 0; }
+    .toggleTrack { position: absolute; inset: 0; background: var(--border); border-radius: 100px; transition: .2s; cursor: pointer; }
+    .toggleTrack .toggleKnob { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    .toggleWrap input:checked + .toggleTrack { background: var(--accent); }
+    .toggleWrap input:checked + .toggleTrack .toggleKnob { transform: translateX(18px); }
+    .badge.subsidy { font-size: 9.5px; font-weight: bold; padding: 1px 6px; border-radius: 100px; background: var(--success-bg); color: var(--accent-ink); margin-left: 4px; white-space: nowrap; }
+    .rowB td.neg, .rowB .amt.neg { color: var(--accent-ink); }
+    .sectionLabel { font-size: 10px; font-weight: bold; letter-spacing: .03em; color: var(--faint); margin-top: 10px; }
+    .sectionLabel:first-child { margin-top: 4px; }
+    .sectionLabel.subsidy { color: var(--accent-ink); }
+    .rowB .netRow { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; padding-top: 8px; border-top: 2px solid var(--border); }
+    .rowB .netRow .lbl { font-size: 12.5px; font-weight: bold; color: var(--ink); }
+    .rowB .netRow .val { font-size: 15px; font-weight: bold; color: var(--ink); }
+    .rowB .netRow .val.neg { color: var(--accent-ink); }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./home.html">← ホームに戻る</a>
+  <h2>定期収支</h2>
+  <p class="muted">グループごとに内訳・編集・項目追加がその場で完結します。タップで開閉、「内訳」「編集」タブで切り替えます。</p>
+
+  <div id="groupCards">
+    <div class="skel skel-item"></div><div class="skel skel-item"></div>
+  </div>
+  <button class="ghost" id="newGroupTopBtn" type="button">＋ 新規グループを作成</button>
+
+  <script>
+    const CATEGORY_MAP = window.KAKEIBO_CATEGORY_MAP;
+    const FAMILY_MEMBERS = window.KAKEIBO_FAMILY_MEMBERS;
+    let recurringList = [];
+    let groupList = [];
+    let currentSettlementRatio = null;
+    let creatingNewGroup = false;
+    const rowState = {};
+
+    function todayStr() { return new Date().toISOString().slice(0, 10); }
+    function fmtYen(n) {
+      const v = Number(n || 0);
+      return (v < 0 ? '-¥' : '¥') + Math.abs(v).toLocaleString();
+    }
+    function defaultRatioPercent() {
+      return currentSettlementRatio ? Math.round(currentSettlementRatio.ratioKazuichi * 100) : 50;
+    }
+    function setRowToast(row, text, kind) {
+      const el = row.querySelector('[data-role="row-toast"]');
+      el.textContent = text;
+      el.classList.remove('ok', 'err');
+      if (kind) el.classList.add(kind);
+    }
+
+    function populateCategorySelect(sel) {
+      Object.keys(CATEGORY_MAP).filter((cat) => cat !== '未分類').forEach((cat) => {
+        const opt = document.createElement('option');
+        opt.value = cat; opt.textContent = cat;
+        sel.appendChild(opt);
+      });
+    }
+    function populatePaidBySelect(sel) {
+      FAMILY_MEMBERS.forEach((member) => {
+        const opt = document.createElement('option');
+        opt.value = member; opt.textContent = member;
+        sel.appendChild(opt);
+      });
+    }
+    function populateDaySelect(sel) {
+      for (let d = 1; d <= 28; d++) {
+        const opt = document.createElement('option');
+        opt.value = d; opt.textContent = d + '日';
+        sel.appendChild(opt);
+      }
+    }
+    function updateSubcategoryOptionsFor(catSel, subSel, selected) {
+      const subs = CATEGORY_MAP[catSel.value] || [];
+      subSel.innerHTML = '';
+      if (subs.length === 0) { subSel.style.display = 'none'; return; }
+      subSel.style.display = 'block';
+      subs.forEach((sub) => {
+        const opt = document.createElement('option');
+        opt.value = sub; opt.textContent = sub;
+        subSel.appendChild(opt);
+      });
+      if (selected) subSel.value = selected;
+    }
+
+    function groupSplitRatioKazuichi(g) {
+      if (g.amount_kazuichi != null && g.amount_narumi != null) {
+        const total = Number(g.amount_kazuichi) + Number(g.amount_narumi);
+        return total === 0 ? null : Number(g.amount_kazuichi) / total;
+      }
+      if (g.ratio_kazuichi != null && g.ratio_narumi != null) {
+        const total = Number(g.ratio_kazuichi) + Number(g.ratio_narumi);
+        return total === 0 ? null : Number(g.ratio_kazuichi) / total;
+      }
+      return null;
+    }
+    function effectiveRatioKazuichi(g) {
+      const own = groupSplitRatioKazuichi(g);
+      if (own != null) return own;
+      return currentSettlementRatio ? currentSettlementRatio.ratioKazuichi : null;
+    }
+    function groupSplitModeClass(g) {
+      if (g.amount_kazuichi != null && g.amount_narumi != null) return 'fixed';
+      if (g.ratio_kazuichi != null && g.ratio_narumi != null) return 'ratio';
+      return 'auto';
+    }
+    function groupSplitLabel(g) {
+      if (g.amount_kazuichi != null && g.amount_narumi != null) {
+        return '固定額 一¥' + Number(g.amount_kazuichi).toLocaleString() + '／成美¥' + Number(g.amount_narumi).toLocaleString();
+      }
+      if (g.ratio_kazuichi != null && g.ratio_narumi != null) {
+        return '比率指定 一' + Math.round(Number(g.ratio_kazuichi) * 100) + '%：成美' + Math.round(Number(g.ratio_narumi) * 100) + '%';
+      }
+      return '通常比率（自動追従）';
+    }
+    function monthValueFromDate(dateStr) { return dateStr ? dateStr.slice(0, 7) : ''; }
+    function monthLabel(dateStr) {
+      if (!dateStr) return '';
+      const parts = dateStr.slice(0, 7).split('-');
+      return parts[0] + '年' + Number(parts[1]) + '月';
+    }
+    function startDateFromMonthValue(monthValue) { return monthValue ? monthValue + '-01' : ''; }
+    function endDateFromMonthValue(monthValue) {
+      if (!monthValue) return '';
+      const parts = monthValue.split('-').map(Number);
+      const lastDay = new Date(parts[0], parts[1], 0).getDate();
+      return monthValue + '-' + String(lastDay).padStart(2, '0');
+    }
+    function groupPeriodLabel(g) { return monthLabel(g.start_date) + '〜' + (g.end_date ? monthLabel(g.end_date) : ''); }
+
+    function nextOccurrenceDate_(item, group) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const day = Number(item.day_of_month);
+      let y = today.getFullYear(), m = today.getMonth();
+      const daysInThisMonth = new Date(y, m + 1, 0).getDate();
+      let candidate = new Date(y, m, Math.min(day, daysInThisMonth));
+      if (candidate < today) {
+        m += 1;
+        if (m > 11) { m = 0; y += 1; }
+        const daysInNextMonth = new Date(y, m + 1, 0).getDate();
+        candidate = new Date(y, m, Math.min(day, daysInNextMonth));
+      }
+      if (group && group.end_date && candidate > new Date(group.end_date + 'T23:59:59')) return null;
+      return candidate;
+    }
+    function nextOccurrenceLabel_(item, group) {
+      const d = nextOccurrenceDate_(item, group);
+      if (!d) return '';
+      return '<span class="gmeta">次回 ' + (d.getMonth() + 1) + '/' + d.getDate() + '</span>';
+    }
+    function computeItemStatus(item, group) {
+      const today = todayStr();
+      if (!item.active) return { text: '無効', cls: 'off' };
+      if (!group) return { text: '要グループ確認', cls: 'off' };
+      if (group.start_date && group.start_date > today) return { text: '開始前', cls: 'off' };
+      if (group.end_date && group.end_date < today) return { text: '終了済み', cls: 'off' };
+      return { text: '有効', cls: '' };
+    }
+
+    function buildItemBlockHTML_(blockItems, label, cls, ratioKazuichi, group) {
+      if (blockItems.length === 0) return '';
+      let rows = '';
+      let totalAmt = 0, totalK = 0, totalN = 0;
+      blockItems.forEach((item) => {
+        const status = computeItemStatus(item, group);
+        let amtK = null, amtN = null;
+        if (ratioKazuichi != null) {
+          amtK = Math.round(item.amount * ratioKazuichi);
+          amtN = item.amount - amtK;
+          totalK += amtK; totalN += amtN;
+        }
+        totalAmt += Number(item.amount);
+        rows += '<tr class="rowClick' + (status.cls === 'off' ? ' inactive' : '') + '" data-item-id="' + item.id + '">' +
+          '<td>' + item.name + (status.cls === 'off' ? ' <span class="pill off">' + status.text + '</span>' : ' ' + nextOccurrenceLabel_(item, group)) + '</td>' +
+          '<td class="' + (item.amount < 0 ? 'neg' : '') + '">' + fmtYen(item.amount) + '</td>' +
+          '<td class="' + (amtK != null && amtK < 0 ? 'neg' : '') + '">' + (amtK != null ? fmtYen(amtK) : '―') + '</td>' +
+          '<td class="' + (amtN != null && amtN < 0 ? 'neg' : '') + '">' + (amtN != null ? fmtYen(amtN) : '―') + '</td>' +
+          '</tr>';
+      });
+      const totalKcell = ratioKazuichi != null ? fmtYen(totalK) : '―';
+      const totalNcell = ratioKazuichi != null ? fmtYen(totalN) : '―';
+      return '<div class="sectionLabel ' + cls + '">' + label + '</div>' +
+        '<table><thead><tr><th>項目</th><th>金額</th><th>一</th><th>成美</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+        '<tfoot><tr><td>' + label + '小計</td><td>' + fmtYen(totalAmt) + '</td><td>' + totalKcell + '</td><td>' + totalNcell + '</td></tr></tfoot></table>';
+    }
+    function buildBreakdownTableHTML(items, ratioKazuichi, group) {
+      if (items.length === 0) return '<div class="gmeta">紐づく項目がありません</div>';
+      const expenseItems = items.filter((item) => !item.is_reimbursement);
+      const subsidyItems = items.filter((item) => item.is_reimbursement);
+      const html = buildItemBlockHTML_(expenseItems, '支出', 'expense', ratioKazuichi, group) + buildItemBlockHTML_(subsidyItems, '補助・還付', 'subsidy', ratioKazuichi, group);
+      if (subsidyItems.length === 0) return html;
+      const netAmt = items.reduce((sum, item) => sum + Number(item.amount), 0);
+      return html + '<div class="netRow"><span class="lbl">差引合計</span><span class="val' + (netAmt < 0 ? ' neg' : '') + '">' + fmtYen(netAmt) + '</span></div>';
+    }
+
+    async function refreshAllData(afterRender) {
+      try {
+        const data = await window.kakeiboData.getRecurringScreenInitialData();
+        currentSettlementRatio = data.ratio;
+        groupList = data.groups;
+        recurringList = data.expenses;
+        renderGroupList();
+        if (afterRender) afterRender();
+      } catch (err) {
+        document.body.insertAdjacentHTML('afterbegin', '<div style="color:var(--danger);">読み込みエラー: ' + err.message + '</div>');
+      }
+    }
+
+    function resyncSummaryText(resync) {
+      if (!resync) return '';
+      const parts = [];
+      if (resync.regenerated) parts.push(resync.regenerated + '件を計上');
+      if (resync.skippedConfirmed) parts.push('確定済み' + resync.skippedConfirmed + '件はスキップ');
+      return parts.length ? '（' + parts.join('・') + '）' : '';
+    }
+    function afterMutationToast(groupId, message) {
+      return () => {
+        const row = document.querySelector('.rowB[data-group-id="' + groupId + '"]');
+        if (row) setRowToast(row, message, 'ok');
+      };
+    }
+
+    function buildGroupRow(g) {
+      const state = rowState[g.id] || (rowState[g.id] = { open: false, tab: 'view' });
+      const row = document.createElement('div');
+      row.className = 'rowB' + (state.open ? ' open' : '');
+      row.dataset.groupId = g.id;
+      row.innerHTML =
+        '<div class="sum" data-role="toggle">' +
+          '<div class="left"><span class="gname"></span><span class="modePill"></span><span class="gmeta" data-role="next-hint"></span></div>' +
+          '<div class="right"><span class="amt"></span><span class="chev">▶</span></div>' +
+        '</div>' +
+        '<div class="body">' +
+          '<div class="rowToast" data-role="row-toast"></div>' +
+          '<div class="seg"><button type="button" data-role="tab-view">内訳</button><button type="button" data-role="tab-edit">グループを編集</button></div>' +
+          '<div class="segPane" data-role="pane-view">' +
+            '<div class="gmeta" data-role="period"></div>' +
+            '<div data-role="breakdown"></div>' +
+            '<div class="gmeta" data-role="auto-note" style="display:none; margin-top:6px;"></div>' +
+            '<button type="button" class="fab" data-role="add-item-btn">＋ 項目を追加</button>' +
+            '<div class="itemForm" data-role="item-form" style="display:none;">' +
+              '<input type="hidden" data-role="item-id" />' +
+              '<div class="fldRow">' +
+                '<div class="fld"><label>カテゴリ <span class="required">必須</span></label><select data-role="item-category"></select></div>' +
+                '<div class="fld"><label>サブカテゴリ <span class="required">必須</span></label><select data-role="item-subcategory"></select></div>' +
+              '</div>' +
+              '<div class="switchRow">' +
+                '<div><div class="switchLabel">🏷 会社補助・還付として記録</div><div class="switchSub">ONの間、金額はマイナス計上・「補助」タグ付きで保存されます</div></div>' +
+                '<label class="toggleWrap"><input type="checkbox" data-role="item-reimbursement" /><span class="toggleTrack"><span class="toggleKnob"></span></span></label>' +
+              '</div>' +
+              '<div class="fldRow">' +
+                '<div class="fld"><label data-role="item-amount-label">金額（円） <span class="required">必須</span></label><input type="number" data-role="item-amount" /></div>' +
+                '<div class="fld"><label>計上日 <span class="required">必須</span></label><select data-role="item-day"></select></div>' +
+              '</div>' +
+              '<div class="fld"><label>支払者 <span class="optional">任意</span></label><select data-role="item-paidby"></select></div>' +
+              '<div class="fld"><label>支払い名称 <span class="required">必須</span></label><input type="text" data-role="item-name" /></div>' +
+              '<div class="btnRow"><button type="button" class="solid" data-role="item-save">この項目を保存</button><button type="button" class="ghost" data-role="item-cancel">キャンセル</button></div>' +
+              '<div class="btnRow"><button type="button" class="ghost" data-role="item-deactivate" style="display:none;">この項目を無効化</button><button type="button" class="danger" data-role="item-delete" style="display:none;">この項目を削除</button></div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="segPane" data-role="pane-edit">' +
+            '<div class="fld"><label>グループ名 <span class="required">必須</span></label><input type="text" data-role="g-name" /></div>' +
+            '<div class="fldRow">' +
+              '<div class="fld"><label>開始月 <span class="required">必須</span></label><input type="month" data-role="g-start" /></div>' +
+              '<div class="fld"><label>終了月（未定なら空欄） <span class="optional">任意</span></label><input type="month" data-role="g-end" /></div>' +
+            '</div>' +
+            '<div class="fld"><label>分担方法</label><div class="modeChoiceMini"><button type="button" data-role="mode-auto">通常比率</button><button type="button" data-role="mode-fixed">固定額指定</button><button type="button" data-role="mode-ratio">比率指定</button></div></div>' +
+            '<div data-role="fixed-inputs" style="display:none;"><div class="fldRow"><div class="fld"><label>一の固定額（円・月額）</label><input type="number" data-role="g-amount-k" /></div><div class="fld"><label>成美の固定額（円・月額）</label><input type="number" data-role="g-amount-n" /></div></div></div>' +
+            '<div data-role="ratio-inputs" style="display:none;"><input type="range" min="0" max="100" data-role="g-ratio-slider" style="width:100%; margin-top:10px;" /><div class="ratioRow"><span>一 <span data-role="g-ratio-k-label"></span>%</span><span>成美 <span data-role="g-ratio-n-label"></span>%</span></div></div>' +
+            '<div class="gmeta" data-role="g-preview" style="margin-top:10px; font-weight:bold; color:var(--ink);"></div>' +
+            '<div class="btnRow"><button type="button" class="solid" data-role="g-save">保存する</button><button type="button" class="danger" data-role="g-delete">このグループを削除</button></div>' +
+          '</div>' +
+        '</div>';
+
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      populateCategorySelect($('item-category'));
+      populatePaidBySelect($('item-paidby'));
+      populateDaySelect($('item-day'));
+      $('item-category').addEventListener('change', () => updateSubcategoryOptionsFor($('item-category'), $('item-subcategory'), null));
+      updateSubcategoryOptionsFor($('item-category'), $('item-subcategory'), null);
+
+      $('toggle').addEventListener('click', () => { state.open = !state.open; row.classList.toggle('open', state.open); });
+      $('tab-view').addEventListener('click', () => setRowTab(row, g.id, 'view'));
+      $('tab-edit').addEventListener('click', () => setRowTab(row, g.id, 'edit'));
+      ['auto', 'fixed', 'ratio'].forEach((mode) => {
+        $('mode-' + mode).addEventListener('click', () => { setRowSplitMode(row, mode); updateRowPreview(row, g.id); });
+      });
+      $('g-amount-k').addEventListener('input', () => updateRowPreview(row, g.id));
+      $('g-amount-n').addEventListener('input', () => updateRowPreview(row, g.id));
+      $('g-ratio-slider').addEventListener('input', () => { updateRatioSliderLabelsFor(row); updateRowPreview(row, g.id); });
+      $('g-save').addEventListener('click', () => saveGroupFromRow(row, g.id));
+      $('g-delete').addEventListener('click', () => deleteGroupFromRow(row, g.id));
+      $('add-item-btn').addEventListener('click', () => openItemFormInRow(row, g.id, null));
+      $('item-save').addEventListener('click', () => saveItemFromRow(row, g.id));
+      $('item-deactivate').addEventListener('click', () => deactivateItemFromRow(row, g.id));
+      $('item-delete').addEventListener('click', () => deleteItemFromRow(row, g.id));
+      $('item-cancel').addEventListener('click', () => closeItemFormInRow(row));
+      $('item-reimbursement').addEventListener('change', () => updateItemReimbursementUI(row));
+
+      fillGroupFieldsInRow(row, g);
+      refreshRowDynamic(row, g);
+      setRowTab(row, g.id, state.tab);
+      return row;
+    }
+
+    function fillGroupFieldsInRow(row, g) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      $('g-name').value = g.name;
+      $('g-start').value = monthValueFromDate(g.start_date);
+      $('g-end').value = monthValueFromDate(g.end_date);
+      $('g-amount-k').value = g.amount_kazuichi != null ? g.amount_kazuichi : '';
+      $('g-amount-n').value = g.amount_narumi != null ? g.amount_narumi : '';
+      let mode = 'auto';
+      if (g.amount_kazuichi != null) mode = 'fixed'; else if (g.ratio_kazuichi != null) mode = 'ratio';
+      setRowSplitMode(row, mode);
+      $('g-ratio-slider').value = mode === 'ratio' ? Math.round(Number(g.ratio_kazuichi) * 100) : defaultRatioPercent();
+      updateRatioSliderLabelsFor(row);
+    }
+    function setRowSplitMode(row, mode) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      ['auto', 'fixed', 'ratio'].forEach((m) => $('mode-' + m).classList.toggle('active', m === mode));
+      $('fixed-inputs').style.display = mode === 'fixed' ? 'block' : 'none';
+      $('ratio-inputs').style.display = mode === 'ratio' ? 'block' : 'none';
+      row.dataset.splitMode = mode;
+    }
+    function updateRatioSliderLabelsFor(row) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      const k = Number($('g-ratio-slider').value);
+      $('g-ratio-k-label').textContent = k;
+      $('g-ratio-n-label').textContent = 100 - k;
+    }
+    function setRowTab(row, groupId, tab) {
+      rowState[groupId].tab = tab;
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      $('tab-view').classList.toggle('active', tab === 'view');
+      $('tab-edit').classList.toggle('active', tab === 'edit');
+      $('pane-view').classList.toggle('active', tab === 'view');
+      $('pane-edit').classList.toggle('active', tab === 'edit');
+    }
+
+    function refreshRowDynamic(row, g) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      const items = recurringList.filter((item) => item.group_id === g.id);
+      const ratioK = effectiveRatioKazuichi(g);
+      const totalAmt = items.reduce((sum, item) => sum + Number(item.amount), 0);
+      const isAuto = groupSplitRatioKazuichi(g) == null;
+
+      row.querySelector('.gname').textContent = g.name;
+      const modePillEl = row.querySelector('.modePill');
+      modePillEl.className = 'modePill ' + groupSplitModeClass(g);
+      modePillEl.textContent = groupSplitLabel(g);
+      const amtEl = row.querySelector('.amt');
+      amtEl.textContent = fmtYen(totalAmt);
+      amtEl.classList.toggle('neg', totalAmt < 0);
+
+      const activeItems = items.filter((item) => computeItemStatus(item, g).cls !== 'off');
+      const nextDates = activeItems.map((item) => nextOccurrenceDate_(item, g)).filter((d) => d);
+      const nextHintEl = $('next-hint');
+      if (nextHintEl) {
+        if (nextDates.length > 0) {
+          const soonest = new Date(Math.min.apply(null, nextDates.map((d) => d.getTime())));
+          nextHintEl.textContent = '次回 ' + (soonest.getMonth() + 1) + '/' + soonest.getDate();
+        } else { nextHintEl.textContent = ''; }
+      }
+      $('period').textContent = groupPeriodLabel(g);
+      $('breakdown').innerHTML = buildBreakdownTableHTML(items, ratioK, g);
+      $('breakdown').querySelectorAll('tbody tr[data-item-id]').forEach((tr) => {
+        tr.addEventListener('click', () => {
+          const item = recurringList.find((x) => x.id === tr.dataset.itemId);
+          if (item) openItemFormInRow(row, g.id, item);
+        });
+      });
+
+      if (isAuto && items.length > 0 && currentSettlementRatio) {
+        $('auto-note').style.display = 'block';
+        $('auto-note').textContent = '※通常比率（現在は一' + Math.round(currentSettlementRatio.ratioKazuichi * 100) + '%：成美' + Math.round(currentSettlementRatio.ratioNarumi * 100) + '%）で計算。実際の計上時点の比率により変動します';
+      } else { $('auto-note').style.display = 'none'; }
+      updateRowPreview(row, g.id);
+    }
+
+    function updateRowPreview(row, groupId) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      const items = recurringList.filter((item) => item.group_id === groupId);
+      const mode = row.dataset.splitMode;
+      let ratioK;
+      if (mode === 'fixed') {
+        const ak = Number($('g-amount-k').value || 0), an = Number($('g-amount-n').value || 0);
+        ratioK = (ak + an) > 0 ? ak / (ak + an) : null;
+      } else if (mode === 'ratio') {
+        ratioK = Number($('g-ratio-slider').value) / 100;
+      } else {
+        ratioK = currentSettlementRatio ? currentSettlementRatio.ratioKazuichi : null;
+      }
+      if (items.length === 0) { $('g-preview').textContent = '項目を追加すると、内訳プレビューがここに表示されます'; return; }
+      const totalAmt = items.reduce((sum, item) => sum + Number(item.amount), 0);
+      if (ratioK == null) { $('g-preview').textContent = 'プレビュー：合計' + fmtYen(totalAmt); return; }
+      let totalK = 0;
+      items.forEach((item) => { totalK += Math.round(item.amount * ratioK); });
+      const totalN = totalAmt - totalK;
+      $('g-preview').textContent = 'プレビュー：合計' + fmtYen(totalAmt) + ' → 一' + fmtYen(totalK) + '／成美' + fmtYen(totalN);
+    }
+
+    function updateItemReimbursementUI(row) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      const on = $('item-reimbursement').checked;
+      $('item-amount-label').innerHTML = (on ? '金額（円）＝還付された額' : '金額（円）') + ' <span class="required">必須</span>';
+    }
+    function openItemFormInRow(row, groupId, item) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      $('item-id').value = item ? item.id : '';
+      if (item) { $('item-category').value = item.category; } else { $('item-category').selectedIndex = 0; }
+      updateSubcategoryOptionsFor($('item-category'), $('item-subcategory'), item ? item.subcategory : null);
+      $('item-paidby').value = item ? (item.paid_by || '') : '';
+      $('item-amount').value = item ? Math.abs(Number(item.amount)) : '';
+      $('item-day').value = item ? item.day_of_month : '1';
+      $('item-name').value = item ? item.name : '';
+      $('item-reimbursement').checked = item ? !!item.is_reimbursement : false;
+      updateItemReimbursementUI(row);
+      $('item-deactivate').style.display = (item && item.active) ? 'block' : 'none';
+      $('item-delete').style.display = item ? 'block' : 'none';
+      $('item-form').style.display = 'block';
+      setRowToast(row, '', null);
+    }
+    function closeItemFormInRow(row) { row.querySelector('[data-role="item-form"]').style.display = 'none'; }
+
+    async function saveItemFromRow(row, groupId) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      const isReimbursement = $('item-reimbursement').checked;
+      const rawAmount = Number($('item-amount').value || 0);
+      const payload = {
+        id: $('item-id').value || null, category: $('item-category').value,
+        subcategory: $('item-subcategory').style.display === 'none' ? null : $('item-subcategory').value,
+        paidBy: $('item-paidby').value, amount: isReimbursement ? -Math.abs(rawAmount) : rawAmount,
+        dayOfMonth: $('item-day').value, name: $('item-name').value, groupId: groupId, isReimbursement: isReimbursement
+      };
+      if (!rawAmount || !payload.name) { setRowToast(row, '金額とメモを入力してください', 'err'); return; }
+      setRowToast(row, '保存中...', null);
+      rowState[groupId] = { open: true, tab: 'view' };
+      try {
+        const saved = await window.kakeiboData.saveRecurringExpense(payload);
+        refreshAllData(afterMutationToast(groupId, '✓ 保存しました' + resyncSummaryText(saved.resync)));
+      } catch (err) {
+        setRowToast(row, 'エラー: ' + err.message, 'err');
+      }
+    }
+    async function deactivateItemFromRow(row, groupId) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      const id = $('item-id').value;
+      if (!id) return;
+      setRowToast(row, '無効化中...', null);
+      rowState[groupId] = { open: true, tab: 'view' };
+      try {
+        await window.kakeiboData.deactivateRecurringExpense(id);
+        refreshAllData(afterMutationToast(groupId, '✓ 無効化しました'));
+      } catch (err) {
+        setRowToast(row, 'エラー: ' + err.message, 'err');
+      }
+    }
+    async function deleteItemFromRow(row, groupId) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      const id = $('item-id').value;
+      if (!id) return;
+      if (!confirm('この項目を削除します。よろしいですか？')) return;
+      setRowToast(row, '削除中...', null);
+      try {
+        await window.kakeiboData.removeRecurringExpense(id);
+        rowState[groupId] = { open: true, tab: 'view' };
+        refreshAllData(afterMutationToast(groupId, '✓ 削除しました'));
+      } catch (err) {
+        setRowToast(row, 'エラー: ' + err.message, 'err');
+      }
+    }
+
+    async function saveGroupFromRow(row, groupId) {
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      const startDate = startDateFromMonthValue($('g-start').value);
+      const endDate = endDateFromMonthValue($('g-end').value);
+      if (endDate && endDate < startDate) { setRowToast(row, '終了月は開始月と同じか、それより後の月にしてください', 'err'); return; }
+      const mode = row.dataset.splitMode;
+      const payload = {
+        id: groupId, name: $('g-name').value, startDate: startDate, endDate: endDate || null, splitMode: mode,
+        amountKazuichi: mode === 'fixed' ? $('g-amount-k').value : null,
+        amountNarumi: mode === 'fixed' ? $('g-amount-n').value : null,
+        ratioKazuichi: mode === 'ratio' ? Number($('g-ratio-slider').value) / 100 : null,
+        ratioNarumi: mode === 'ratio' ? (100 - Number($('g-ratio-slider').value)) / 100 : null
+      };
+      if (!payload.name || !startDate) { setRowToast(row, 'グループ名と開始月を入力してください', 'err'); return; }
+      setRowToast(row, '保存中...', null);
+      rowState[groupId] = { open: true, tab: 'view' };
+      try {
+        const saved = await window.kakeiboData.saveRecurringExpenseGroup(payload);
+        refreshAllData(afterMutationToast(groupId, '✓ 保存しました' + resyncSummaryText(saved.resync)));
+      } catch (err) {
+        setRowToast(row, 'エラー: ' + err.message, 'err');
+      }
+    }
+    async function deleteGroupFromRow(row, groupId) {
+      if (!confirm('このグループを削除します。よろしいですか？')) return;
+      setRowToast(row, '削除中...', null);
+      try {
+        await window.kakeiboData.removeRecurringExpenseGroup(groupId);
+        delete rowState[groupId];
+        refreshAllData();
+      } catch (err) {
+        setRowToast(row, 'エラー: ' + err.message, 'err');
+      }
+    }
+
+    function buildNewGroupRow() {
+      const row = document.createElement('div');
+      row.className = 'rowB open';
+      row.innerHTML =
+        '<div class="body" style="border-top:none; padding-top:12px;">' +
+          '<div class="rowToast" data-role="row-toast"></div>' +
+          '<div class="fld"><label>グループ名 <span class="required">必須</span></label><input type="text" data-role="g-name" placeholder="例：神戸市住居費、ローン" /></div>' +
+          '<div class="fldRow"><div class="fld"><label>開始月 <span class="required">必須</span></label><input type="month" data-role="g-start" /></div><div class="fld"><label>終了月（未定なら空欄） <span class="optional">任意</span></label><input type="month" data-role="g-end" /></div></div>' +
+          '<div class="fld"><label>分担方法</label><div class="modeChoiceMini"><button type="button" data-role="mode-auto">通常比率</button><button type="button" data-role="mode-fixed">固定額指定</button><button type="button" data-role="mode-ratio">比率指定</button></div></div>' +
+          '<div data-role="fixed-inputs" style="display:none;"><div class="fldRow"><div class="fld"><label>一の固定額（円・月額）</label><input type="number" data-role="g-amount-k" /></div><div class="fld"><label>成美の固定額（円・月額）</label><input type="number" data-role="g-amount-n" /></div></div></div>' +
+          '<div data-role="ratio-inputs" style="display:none;"><input type="range" min="0" max="100" data-role="g-ratio-slider" style="width:100%; margin-top:10px;" /><div class="ratioRow"><span>一 <span data-role="g-ratio-k-label"></span>%</span><span>成美 <span data-role="g-ratio-n-label"></span>%</span></div></div>' +
+          '<p class="muted" style="margin-top:10px;">グループを保存すると、項目の追加や内訳プレビューができるようになります。</p>' +
+          '<div class="btnRow"><button type="button" class="solid" data-role="g-save">グループを作成</button><button type="button" class="ghost" data-role="g-cancel">キャンセル</button></div>' +
+        '</div>';
+
+      const $ = (role) => row.querySelector('[data-role="' + role + '"]');
+      $('g-start').value = todayStr().slice(0, 7);
+      row.dataset.splitMode = 'auto';
+      setRowSplitMode(row, 'auto');
+      $('g-ratio-slider').value = defaultRatioPercent();
+      updateRatioSliderLabelsFor(row);
+      ['auto', 'fixed', 'ratio'].forEach((mode) => { $('mode-' + mode).addEventListener('click', () => setRowSplitMode(row, mode)); });
+      $('g-ratio-slider').addEventListener('input', () => updateRatioSliderLabelsFor(row));
+      $('g-cancel').addEventListener('click', () => { creatingNewGroup = false; renderGroupList(); });
+      $('g-save').addEventListener('click', async () => {
+        const startDate = startDateFromMonthValue($('g-start').value);
+        const endDate = endDateFromMonthValue($('g-end').value);
+        if (endDate && endDate < startDate) { setRowToast(row, '終了月は開始月と同じか、それより後の月にしてください', 'err'); return; }
+        const mode = row.dataset.splitMode;
+        const payload = {
+          id: null, name: $('g-name').value, startDate: startDate, endDate: endDate || null, splitMode: mode,
+          amountKazuichi: mode === 'fixed' ? $('g-amount-k').value : null,
+          amountNarumi: mode === 'fixed' ? $('g-amount-n').value : null,
+          ratioKazuichi: mode === 'ratio' ? Number($('g-ratio-slider').value) / 100 : null,
+          ratioNarumi: mode === 'ratio' ? (100 - Number($('g-ratio-slider').value)) / 100 : null
+        };
+        if (!payload.name || !startDate) { setRowToast(row, 'グループ名と開始月を入力してください', 'err'); return; }
+        setRowToast(row, '保存中...', null);
+        try {
+          const saved = await window.kakeiboData.saveRecurringExpenseGroup(payload);
+          creatingNewGroup = false;
+          rowState[saved.id] = { open: true, tab: 'view' };
+          refreshAllData(afterMutationToast(saved.id, '✓ グループ「' + saved.name + '」を作成しました'));
+        } catch (err) {
+          setRowToast(row, 'エラー: ' + err.message, 'err');
+        }
+      });
+      return row;
+    }
+
+    function renderGroupList() {
+      const wrap = document.getElementById('groupCards');
+      wrap.innerHTML = '';
+      if (creatingNewGroup) wrap.appendChild(buildNewGroupRow());
+      if (groupList.length === 0 && !creatingNewGroup) {
+        wrap.insertAdjacentHTML('beforeend', '<div class="muted" style="padding:8px 0;">グループはまだありません</div>');
+        return;
+      }
+      groupList.forEach((g) => wrap.appendChild(buildGroupRow(g)));
+    }
+
+    document.getElementById('newGroupTopBtn').addEventListener('click', () => {
+      creatingNewGroup = true;
+      renderGroupList();
+      document.getElementById('groupCards').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    window.kakeiboReady.then((ok) => {
+      if (!ok) { document.body.insertAdjacentHTML('afterbegin', '<div style="color:var(--danger);">ログインできませんでした。LINEアプリから開き直してください。</div>'); return; }
+      refreshAllData();
+    });
+  </script>
+</body>
+</html>
