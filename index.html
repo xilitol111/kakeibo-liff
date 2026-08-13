@@ -137,7 +137,6 @@
         remoteLog('exchange_ok', 'email=' + data.email);
 
         const { data: otpData, error: otpError } = await supabaseClient.auth.verifyOtp({
-          email: data.email,
           token_hash: data.hashedToken,
           type: 'magiclink'
         });
