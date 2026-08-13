@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>支出の記録</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-Ae2dYXxD';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft2: #F2F7F4;
+      --danger: #C0392B; --success-bg: #E4F7EC;
+      --switch-bg: #F2FBF6; --switch-border: #B9EBCD; --switch-ink: #5B9E78;
+      --req-bg: #e5484d; --opt-bg: #eee; --opt-ink: #666;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft2: #17231C;
+        --danger: #E5766A; --success-bg: #163627;
+        --switch-bg: #14231A; --switch-border: #2B4A38; --switch-ink: #6FCF9A;
+        --req-bg: #C94A4F; --opt-bg: #2B332F; --opt-ink: #9AA6A0;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    label .required { color: #fff; background: var(--req-bg); font-size: 11px; font-weight: normal; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+    label .optional { color: var(--opt-ink); background: var(--opt-bg); font-size: 11px; font-weight: normal; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+    select, input { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 16px; background: var(--panel); color: var(--ink); border: 1px solid var(--border); }
+    button { width: 100%; padding: 12px; margin-top: 20px; font-size: 16px; background: var(--accent); color: white; border: none; border-radius: 6px; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); }
+    #status { margin-top: 12px; text-align: center; color: var(--danger); }
+    .switchRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; padding: 10px 12px; background: var(--switch-bg); border: 1px solid var(--switch-border); border-radius: 10px; }
+    .switchRow .switchLabel { font-size: 13px; font-weight: bold; color: var(--accent-ink); }
+    .switchRow .switchSub { font-size: 11px; color: var(--switch-ink); margin-top: 2px; }
+    .toggleWrap { position: relative; display: inline-block; width: 40px; height: 22px; flex: none; }
+    .toggleWrap input { opacity: 0; width: 0; height: 0; }
+    .toggleTrack { position: absolute; inset: 0; background: var(--border); border-radius: 100px; transition: .2s; cursor: pointer; }
+    .toggleTrack .toggleKnob { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #fff; top: 2px; left: 2px; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    .toggleWrap input:checked + .toggleTrack { background: var(--accent); }
+    .toggleWrap input:checked + .toggleTrack .toggleKnob { transform: translateX(18px); }
+    .hintline { font-size: 11px; color: var(--accent-ink); background: var(--success-bg); border-radius: 6px; padding: 6px 8px; margin-top: 4px; }
+    #completeScreen { display: none; text-align: center; padding-top: 24px; }
+    #completeScreen .check { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 34px; line-height: 64px; margin: 0 auto 12px; }
+    #completeScreen h2 { margin: 0 0 16px; }
+    #completeScreen .summary { text-align: left; background: var(--accent-soft2); border-radius: 10px; padding: 14px 16px; }
+    #completeScreen .summary .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+    #completeScreen .summary .row .v { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div id="formScreen">
+    <h2>支出の記録</h2>
+
+    <label>取引日 <span class="required">必須</span></label>
+    <input type="date" id="occurredAt" />
+
+    <label>カテゴリ <span class="required">必須</span></label>
+    <select id="category"></select>
+
+    <label id="subcategoryLabel">サブカテゴリ <span class="required">必須</span></label>
+    <select id="subcategory"></select>
+
+    <label>支払者 <span class="required">必須</span></label>
+    <select id="paidBy">
+      <option value="" disabled selected>選択してください</option>
+    </select>
+
+    <label>負担先 <span class="required">必須</span></label>
+    <select id="billedTo">
+      <option value="共用" selected>共用（通常の比率で精算）</option>
+    </select>
+
+    <div class="switchRow">
+      <div>
+        <div class="switchLabel">🏷 会社補助・還付として記録</div>
+        <div class="switchSub">ONの間、金額はマイナス計上・「補助」タグ付きで保存されます</div>
+      </div>
+      <label class="toggleWrap">
+        <input type="checkbox" id="isReimbursement" />
+        <span class="toggleTrack"><span class="toggleKnob"></span></span>
+      </label>
+    </div>
+
+    <label id="amountLabel">金額（円） <span class="required">必須</span></label>
+    <input type="number" id="amount" placeholder="例：1200" />
+    <div class="hintline" id="reimbursementHint" style="display:none;">💡 スイッチONなので、実際はマイナスとして計上されます</div>
+
+    <label>支払い名称 <span class="optional">任意</span></label>
+    <input type="text" id="name" placeholder="例：マクドナルド" />
+
+    <button id="submitBtn">記録する</button>
+    <div id="status"></div>
+  </div>
+
+  <div id="completeScreen">
+    <div class="check">✓</div>
+    <h2>記録しました</h2>
+    <div class="summary" id="completeSummary"></div>
+    <button id="againBtn">続けて記録する</button>
+    <button class="ghost" id="closeBtn" type="button" style="display:none;">閉じる</button>
+  </div>
+
+  <script>
+    const CATEGORY_MAP = window.KAKEIBO_CATEGORY_MAP;
+    const FAMILY_MEMBERS = window.KAKEIBO_FAMILY_MEMBERS;
+
+    const categorySelect = document.getElementById('category');
+    const subcategorySelect = document.getElementById('subcategory');
+    const paidBySelect = document.getElementById('paidBy');
+    const billedToSelect = document.getElementById('billedTo');
+    const occurredAtInput = document.getElementById('occurredAt');
+
+    FAMILY_MEMBERS.forEach((member) => {
+      const opt = document.createElement('option');
+      opt.value = member; opt.textContent = member;
+      paidBySelect.appendChild(opt);
+    });
+    FAMILY_MEMBERS.forEach((member) => {
+      const opt = document.createElement('option');
+      opt.value = member; opt.textContent = member + '（全額' + member + 'の負担・貸し借り扱い）';
+      billedToSelect.appendChild(opt);
+    });
+
+    occurredAtInput.value = new Date().toISOString().slice(0, 10);
+
+    Object.keys(CATEGORY_MAP).filter((cat) => cat !== '未分類').forEach((cat) => {
+      const opt = document.createElement('option');
+      opt.value = cat; opt.textContent = cat;
+      categorySelect.appendChild(opt);
+    });
+
+    const subcategoryLabel = document.getElementById('subcategoryLabel');
+    function updateSubcategoryOptions() {
+      const subs = CATEGORY_MAP[categorySelect.value] || [];
+      subcategorySelect.innerHTML = '';
+      if (subs.length === 0) {
+        subcategorySelect.style.display = 'none';
+        subcategoryLabel.style.display = 'none';
+        return;
+      }
+      subcategorySelect.style.display = 'block';
+      subcategoryLabel.style.display = 'block';
+      subs.forEach((sub) => {
+        const opt = document.createElement('option');
+        opt.value = sub; opt.textContent = sub;
+        subcategorySelect.appendChild(opt);
+      });
+    }
+    categorySelect.addEventListener('change', updateSubcategoryOptions);
+    updateSubcategoryOptions();
+
+    let inLiffClient = false;
+    window.kakeiboReady.then((ok) => {
+      try { inLiffClient = typeof liff !== 'undefined' && liff.isInClient(); } catch (e) {}
+      document.getElementById('closeBtn').style.display = inLiffClient ? 'block' : 'none';
+      if (!ok) { document.getElementById('status').textContent = 'ログインできませんでした。LINEアプリから開き直してください。'; }
+    });
+
+    const isReimbursementCheckbox = document.getElementById('isReimbursement');
+    const amountLabel = document.getElementById('amountLabel');
+    const reimbursementHint = document.getElementById('reimbursementHint');
+    function updateReimbursementUI() {
+      const on = isReimbursementCheckbox.checked;
+      amountLabel.innerHTML = (on ? '金額（円）＝還付された額' : '金額（円）') + ' <span class="required">必須</span>';
+      reimbursementHint.style.display = on ? 'block' : 'none';
+    }
+    isReimbursementCheckbox.addEventListener('change', updateReimbursementUI);
+    updateReimbursementUI();
+
+    function resetForm() {
+      document.getElementById('amount').value = '';
+      document.getElementById('name').value = '';
+      paidBySelect.value = '';
+      billedToSelect.value = '共用';
+      occurredAtInput.value = new Date().toISOString().slice(0, 10);
+      isReimbursementCheckbox.checked = false;
+      updateReimbursementUI();
+      document.getElementById('status').textContent = '';
+    }
+    function fmtYen(n) {
+      const v = Number(n || 0);
+      return (v < 0 ? '-¥' : '¥') + Math.abs(v).toLocaleString();
+    }
+
+    async function submitExpense() {
+      if (!paidBySelect.value) { document.getElementById('status').textContent = '支払者を選択してください'; return; }
+      if (!document.getElementById('amount').value) { document.getElementById('status').textContent = '金額を入力してください'; return; }
+
+      const subcategory = subcategorySelect.style.display === 'none' ? null : subcategorySelect.value;
+      const isReimbursement = isReimbursementCheckbox.checked;
+      const rawAmount = Number(document.getElementById('amount').value);
+      const payload = {
+        occurredAt: occurredAtInput.value, category: categorySelect.value, subcategory: subcategory,
+        paidBy: paidBySelect.value, billedTo: billedToSelect.value,
+        amount: isReimbursement ? -Math.abs(rawAmount) : rawAmount,
+        name: document.getElementById('name').value, isReimbursement: isReimbursement
+      };
+
+      document.getElementById('submitBtn').disabled = true;
+      document.getElementById('status').textContent = '';
+      try {
+        await window.kakeiboData.submitTransactionFromLiff(payload);
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('completeSummary').innerHTML =
+          '<div class="row"><span>日付</span><span class="v">' + payload.occurredAt + '</span></div>' +
+          '<div class="row"><span>カテゴリ</span><span class="v">' + payload.category + (subcategory ? '／' + subcategory : '') + '</span></div>' +
+          '<div class="row"><span>支払者</span><span class="v">' + payload.paidBy + '</span></div>' +
+          (payload.billedTo !== '共用' ? '<div class="row"><span>負担先</span><span class="v">' + payload.billedTo + '（貸し借り）</span></div>' : '') +
+          '<div class="row"><span>金額</span><span class="v">' + fmtYen(payload.amount) + '</span></div>' +
+          (payload.isReimbursement ? '<div class="row"><span>種別</span><span class="v">🏷 補助・還付</span></div>' : '') +
+          (payload.name ? '<div class="row"><span>名称</span><span class="v">' + payload.name + '</span></div>' : '');
+        document.getElementById('formScreen').style.display = 'none';
+        document.getElementById('completeScreen').style.display = 'block';
+      } catch (err) {
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('status').textContent = 'エラー: ' + err.message;
+      }
+    }
+
+    document.getElementById('submitBtn').addEventListener('click', submitExpense);
+    document.getElementById('againBtn').addEventListener('click', () => {
+      resetForm();
+      document.getElementById('completeScreen').style.display = 'none';
+      document.getElementById('formScreen').style.display = 'block';
+    });
+    document.getElementById('closeBtn').addEventListener('click', () => {
+      if (inLiffClient) liff.closeWindow();
+    });
+  </script>
+</body>
+</html>
