@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LIFF最小PoC（GitHub Pages）</title>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 16px; line-height: 1.7; font-size: 14px; }
+    h2 { font-size: 17px; }
+    .log { margin-top: 16px; background: #f2f2f2; border-radius: 6px; padding: 10px; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+    .row { padding: 6px 0; border-bottom: 1px solid #ddd; }
+    .ok { color: #067A38; font-weight: bold; }
+    .ng { color: #C0392B; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>LIFF最小PoC（GitHub Pages配信・診断専用）</h2>
+  <p>GAS・Supabase Edge Functionsどちらのホスティング制約も受けない、純粋な静的ページでliff.init()・トークン取得が機能するかだけを確認します。実データには一切触れません。</p>
+  <div id="status" class="row">初期化中...</div>
+  <div id="log" class="log"></div>
+
+  <script>
+    const SUPABASE_URL = 'https://gduznhcuyjxxyuhfexek.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkdXpuaGN1eWp4eHl1aGZleGVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI5NzMxMjYsImV4cCI6MjA4ODU0OTEyNn0.YxDgpDnNOws7IRdGzKDvh9mFmGgrQZU4XKWuJ81l_6E';
+    const LIFF_ID = '2010928882-2pw86Y6j'; // 買い物リストの既存LIFF ID（profile/openid scope設定済み）を流用
+
+    const logEl = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+
+    function appendLog(text) {
+      const line = document.createElement('div');
+      line.textContent = new Date().toLocaleTimeString() + ' - ' + text;
+      logEl.prepend(line);
+    }
+
+    function remoteLog(step, detail) {
+      appendLog(step + (detail ? (': ' + detail) : ''));
+      return fetch(SUPABASE_URL + '/rest/v1/oidc_poc_log', {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({ step: 'ghpages:' + step, detail: String(detail || '').slice(0, 1000) })
+      }).catch(() => {});
+    }
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = 'row' + (cls ? ' ' + cls : '');
+    }
+
+    (async function init() {
+      remoteLog('page_load', 'href=' + location.href + ' / ua=' + navigator.userAgent.slice(0, 80));
+
+      let liffOk = false;
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        remoteLog('liff_init_done', 'ok=' + liffOk);
+        proceed();
+      };
+      const t0 = Date.now();
+      setTimeout(finish, 8000);
+      try {
+        liff.init({ liffId: LIFF_ID }).then(() => {
+          liffOk = true;
+          remoteLog('liff_init_resolved', 'elapsedMs=' + (Date.now() - t0));
+          finish();
+        }).catch((e) => {
+          remoteLog('liff_init_rejected', 'elapsedMs=' + (Date.now() - t0) + ' / ' + (e && e.message));
+          finish();
+        });
+      } catch (e) {
+        remoteLog('liff_init_sync_error', e.message);
+        finish();
+      }
+    })();
+
+    function proceed() {
+      if (typeof liff === 'undefined') {
+        setStatus('❌ liff未定義', 'ng');
+        return;
+      }
+      let isInClient = 'n/a';
+      try { isInClient = liff.isInClient(); } catch (e) { remoteLog('isInClient_error', e.message); }
+      setStatus('isInClient=' + isInClient, '');
+      remoteLog('isInClient', String(isInClient));
+
+      try {
+        const accessToken = liff.getAccessToken ? liff.getAccessToken() : null;
+        remoteLog('getAccessToken', accessToken ? ('取得成功(先頭20文字)=' + accessToken.slice(0, 20)) : '空');
+      } catch (e) {
+        remoteLog('getAccessToken_error', e.message);
+      }
+
+      try {
+        const idToken = liff.getIDToken ? liff.getIDToken() : null;
+        remoteLog('getIDToken', idToken ? ('取得成功(先頭20文字)=' + idToken.slice(0, 20)) : '空');
+        setStatus(idToken ? '✅ IDトークン取得成功' : '❌ IDトークン空', idToken ? 'ok' : 'ng');
+      } catch (e) {
+        remoteLog('getIDToken_error', e.message);
+        setStatus('❌ getIDTokenで例外: ' + e.message, 'ng');
+      }
+    }
+  </script>
+</body>
+</html>
