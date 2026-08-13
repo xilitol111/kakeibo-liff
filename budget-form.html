@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>予算</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-Ae2dYXxD';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --success-bg: #E4F7EC;
+      --warn-bg: #FCEFE4; --warn-border: #E8C39E; --warn-ink: #A85C1C;
+      --switch-bg: #F2FBF6; --switch-border: #B9EBCD; --switch-ink: #5B9E78;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --success-bg: #163627;
+        --warn-bg: #2E2114; --warn-border: #4A3420; --warn-ink: #E3A15C;
+        --switch-bg: #14231A; --switch-border: #2B4A38; --switch-ink: #6FCF9A;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    select, input { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 16px; background: var(--panel); color: var(--ink); border: 1px solid var(--border); }
+    button { width: 100%; padding: 12px; margin-top: 20px; font-size: 16px; background: var(--accent); color: white; border: none; border-radius: 6px; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); width: auto; padding: 6px 16px; margin-top: 0; }
+    .yearNav { display: flex; align-items: center; justify-content: space-between; }
+    .yearNav .yearLabel { font-size: 18px; font-weight: bold; }
+    .card { background: var(--accent-soft); border-radius: 10px; padding: 12px; margin-top: 12px; }
+    .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .row:last-child { border-bottom: none; }
+    .progress-track { height: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 100px; overflow: hidden; margin-top: 6px; }
+    .progress-fill { height: 100%; background: var(--accent); }
+    .progress-fill.over { background: var(--danger); }
+    #status { margin-top: 12px; text-align: center; }
+    #status.ok { color: var(--accent-ink); font-weight: bold; }
+    #status.err { color: var(--danger); font-weight: bold; }
+    .pctHead { display: flex; justify-content: space-between; align-items: baseline; }
+    .pctHead .pctVal { font-size: 26px; font-weight: bold; }
+    .pctHead .pctVal.over { color: var(--danger); }
+    .pctHead .pctLabel { font-size: 12px; color: var(--muted); }
+    .projection { background: var(--success-bg); color: var(--accent-ink); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+    .projection .ttl { font-size: 11px; opacity: 0.8; }
+    .projection .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: none; font-size: 14px; color: inherit; }
+    .projection .row .who { font-weight: bold; }
+    .projection .row .amt { font-weight: bold; }
+    .monthItem { padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .monthItem.active { background: var(--accent-soft2); }
+    .monthItem .head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+    .monthItem .m { font-weight: bold; }
+    .monthItem .amt.none { color: var(--faint); }
+    .warnBadge { display: inline-block; font-size: 10.5px; font-weight: bold; color: var(--warn-ink); background: var(--warn-bg); border-radius: 100px; padding: 2px 8px; }
+    #monthDetail { display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .catField { margin-top: 14px; }
+    .catField .catHead { display: flex; justify-content: space-between; align-items: baseline; }
+    .catField .catName { font-weight: bold; }
+    .catField .catActual { font-size: 12px; color: var(--muted); }
+    .catField .catActual.over { color: var(--danger); font-weight: bold; }
+    .catField .progress-track { height: 6px; margin-top: 4px; }
+    .annualCats { margin-top: 16px; }
+    .annualCatsTtl { font-size: 10.5px; color: var(--muted); letter-spacing: 0.03em; margin-bottom: 6px; }
+    .annualCat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+    .annualCat .catHead { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+    .annualCat .catName { font-weight: bold; }
+    .annualCat .catActual { font-size: 11.5px; color: var(--muted); }
+    .annualCat .catActual.over { color: var(--danger); font-weight: bold; }
+    .annualCat .progress-track { height: 6px; margin-top: 4px; }
+    .annualCat .annualInputRow { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .annualCat .annualInputRow label { margin: 0; font-size: 11.5px; font-weight: normal; color: var(--faint); white-space: nowrap; }
+    .annualCat .annualInputRow input { margin: 0; }
+    .annualCat .savedTick { color: var(--accent-ink); font-weight: bold; opacity: 0; transition: opacity 0.3s ease; font-size: 13px; }
+    .annualCat .savedTick.show { opacity: 1; }
+    .uncatWarn { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 10px; padding: 10px 12px; margin-top: 8px; font-size: 12.5px; color: var(--warn-ink); }
+    .paceBox { border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 12.5px; }
+    .paceBox.good { background: var(--success-bg); color: var(--accent-ink); }
+    .paceBox.warn { background: var(--warn-bg); color: var(--warn-ink); }
+    .paceBox.neutral { background: var(--accent-soft); color: var(--muted); }
+    .paceBox .paceHead { font-weight: bold; margin-bottom: 3px; }
+    .sectionNote { font-size: 11.5px; color: var(--faint); margin-top: -6px; line-height: 1.6; }
+    .eventNew { background: var(--accent-soft); border-radius: 10px; padding: 12px; margin-top: 10px; }
+    .eventNew label { font-size: 12px; }
+    .eventNew button { margin-top: 10px; }
+    .eventActions { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .eventActions .annualInputRow { flex: 1; margin-top: 0; }
+    .eventDeleteBtn { width: auto; margin-top: 0; padding: 8px 12px; font-size: 12px; border-color: var(--danger); color: var(--danger); }
+    .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 6px; }
+    @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    .skel-card { height: 90px; }
+    .skel-month { height: 40px; margin-bottom: 6px; border-radius: 8px; }
+    a.backLink { display: inline-block; margin-bottom: 12px; font-size: 12px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .switchCompare { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; background: var(--switch-bg); border: 1px solid var(--switch-border); border-radius: 10px; padding: 4px; }
+    .switchCompare .opt { flex: 1; text-align: center; font-size: 11px; font-weight: bold; padding: 6px 4px; border-radius: 8px; color: var(--switch-ink); }
+    .switchCompare .opt.on { background: var(--accent); color: #fff; }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./home.html">← ホームに戻る</a>
+  <h2>予算</h2>
+
+  <div class="yearNav">
+    <button class="ghost" id="prevYearBtn" type="button" aria-label="前年">◀</button>
+    <div class="yearLabel" id="yearLabel"></div>
+    <button class="ghost" id="nextYearBtn" type="button" aria-label="翌年">▶</button>
+  </div>
+
+  <div class="card skel skel-card" id="yearSummaryCard"></div>
+
+  <h3 style="margin-top:24px;">イベント予算</h3>
+  <p class="sectionNote">旅行・行事など月をまたぐ一時的な支出を、カテゴリの月次予算とは別枠でまとめて管理します（年をまたいでも常に表示されます）。表編集画面のイベントタグは、ここで作成した名称から選ぶ形になります。</p>
+  <div id="eventList">
+    <div class="skel skel-month"></div>
+  </div>
+  <div class="eventNew">
+    <label>新しいイベント名</label>
+    <input type="text" id="newEventName" placeholder="例：夏の帰省" />
+    <label>予算（円・任意）</label>
+    <input type="number" id="newEventBudget" placeholder="空欄可" />
+    <button class="ghost" id="addEventBtn" type="button">＋ イベントを作成</button>
+  </div>
+
+  <h3 style="margin-top:24px;">月ごとの内訳（タップでカテゴリ別に編集）</h3>
+  <div id="monthList">
+    <div class="skel skel-month"></div><div class="skel skel-month"></div><div class="skel skel-month"></div>
+  </div>
+
+  <div id="monthDetail">
+    <h3 id="monthDetailTitle"></h3>
+    <div class="card" id="monthSummaryCard"></div>
+    <h3 style="margin-top:20px;">カテゴリ別</h3>
+    <div id="categoryFields"></div>
+    <button id="saveBtn">保存する</button>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    const CATEGORY_MAP = window.KAKEIBO_CATEGORY_MAP;
+    const qs = new URLSearchParams(location.search);
+    let year = qs.get('year') || String(new Date().getFullYear());
+    const initialOpenMonth = qs.get('month') || '';
+    let yearlyData = null;
+    let selectedYearMonth = null;
+    let currentBudgets = null;
+    let showGross = false;
+
+    function cacheGet(key) { try { return JSON.parse(sessionStorage.getItem(key)); } catch (e) { return null; } }
+    function cacheSet(key, data) { try { sessionStorage.setItem(key, JSON.stringify(data)); } catch (e) {} }
+
+    function reimbToggleHtml(idSuffix) {
+      return '<div class="switchCompare" id="reimbToggle-' + idSuffix + '">' +
+        '<span class="opt' + (!showGross ? ' on' : '') + '" data-mode="net">補助・還付を含む</span>' +
+        '<span class="opt' + (showGross ? ' on' : '') + '" data-mode="gross">補助・還付を除く</span>' +
+      '</div>';
+    }
+    function wireReimbToggle(idSuffix, onChange) {
+      const el = document.getElementById('reimbToggle-' + idSuffix);
+      if (!el) return;
+      el.querySelectorAll('.opt').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const wantsGross = btn.dataset.mode === 'gross';
+          if (wantsGross === showGross) return;
+          showGross = wantsGross;
+          onChange();
+        });
+      });
+    }
+
+    const monthDetail = document.getElementById('monthDetail');
+    const fieldsEl = document.getElementById('categoryFields');
+
+    function fmtYen(n) {
+      const v = Number(n || 0);
+      return (v < 0 ? '-¥' : '¥') + Math.abs(v).toLocaleString();
+    }
+    function setStatus(text, kind) {
+      const el = document.getElementById('status');
+      el.textContent = text;
+      el.classList.remove('ok', 'err');
+      if (kind) el.classList.add(kind);
+    }
+    function renderProjectionHtml(title, ratioKazuichi, ratioNarumi, projectedKazuichi, projectedNarumi) {
+      return (
+        '<div class="projection">' +
+          '<div class="ttl">' + title + '（比率 一' + Math.round(ratioKazuichi * 100) + '%:成美' + Math.round(ratioNarumi * 100) + '%）</div>' +
+          '<div class="row"><span class="who">一の想定負担額</span><span class="amt">' + fmtYen(projectedKazuichi) + '</span></div>' +
+          '<div class="row"><span class="who">成美の想定負担額</span><span class="amt">' + fmtYen(projectedNarumi) + '</span></div>' +
+        '</div>'
+      );
+    }
+
+    function renderAnnualCategoryBreakdown() {
+      const uncatWarn = yearlyData.uncategorizedActual > 0
+        ? '<div class="uncatWarn">未分類の実績が' + fmtYen(yearlyData.uncategorizedActual) + '残っています（要分類・表編集画面で確認してください）</div>'
+        : '';
+      const rows = yearlyData.categories.map((c) => {
+        const actual = showGross ? c.actualGross : c.actual;
+        const pct = showGross ? c.pctGross : c.pct;
+        const actualText = pct !== null
+          ? fmtYen(actual) + ' / ' + fmtYen(c.budget) + '（' + pct + '%）'
+          : fmtYen(actual) + '（年間予算未設定）';
+        return (
+          '<div class="annualCat" data-category="' + c.category + '">' +
+            '<div class="catHead"><span class="catName">' + c.category + '</span>' +
+              '<span class="catActual' + (pct > 100 ? ' over' : '') + '">' + actualText + '</span></div>' +
+            (pct !== null
+              ? '<div class="progress-track"><div class="progress-fill' + (pct > 100 ? ' over' : '') + '" style="width:' + Math.min(pct, 100) + '%"></div></div>'
+              : '') +
+            '<div class="annualInputRow">' +
+              '<label>年間予算</label>' +
+              '<input type="number" class="annualBudgetInput" data-category="' + c.category + '" value="' + (c.budget || '') + '" />' +
+              '<span class="savedTick">✓</span>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+      return '<div class="annualCats"><div class="annualCatsTtl">カテゴリ別年間予算（入力すると12ヶ月に均等配分されます。月ごとの個別調整は下の月一覧から）</div>' + uncatWarn + rows + '</div>';
+    }
+
+    function renderYearSummary() {
+      document.getElementById('yearLabel').textContent = yearlyData.year + '年';
+      const card = document.getElementById('yearSummaryCard');
+      card.classList.remove('skel', 'skel-card');
+      const actualTotal = showGross ? yearlyData.actualGrossTotal : yearlyData.actualTotal;
+      const pct = showGross ? yearlyData.pctGross : yearlyData.pct;
+      const pctText = pct === null ? '未設定' : pct + '%';
+      const remaining = yearlyData.budgetTotal - actualTotal;
+      card.innerHTML =
+        reimbToggleHtml('year') +
+        '<div class="pctHead"><span class="pctVal' + (pct > 100 ? ' over' : '') + '">' + pctText + '</span><span class="pctLabel">消化率</span></div>' +
+        '<div class="progress-track"><div class="progress-fill' + (pct > 100 ? ' over' : '') + '" style="width:' + Math.min(pct || 0, 100) + '%"></div></div>' +
+        '<div class="row" style="margin-top:10px;"><span>予算</span><span>' + fmtYen(yearlyData.budgetTotal) + '</span></div>' +
+        '<div class="row"><span>実績</span><span>' + fmtYen(actualTotal) + '</span></div>' +
+        '<div class="row"><span>' + (remaining >= 0 ? '残り' : '超過') + '</span><span>' + fmtYen(Math.abs(remaining)) + '</span></div>' +
+        renderYearPaceHtml(pct) +
+        renderProjectionHtml('予算通り使い切った場合の想定精算額', yearlyData.ratioKazuichi, yearlyData.ratioNarumi, yearlyData.projectedKazuichi, yearlyData.projectedNarumi) +
+        renderAnnualCategoryBreakdown();
+      wireReimbToggle('year', () => { renderYearSummary(); renderMonthList(); });
+    }
+
+    document.getElementById('yearSummaryCard').addEventListener('change', async (e) => {
+      const input = e.target.closest('.annualBudgetInput');
+      if (!input) return;
+      const category = input.dataset.category;
+      const value = input.value === '' ? 0 : Number(input.value);
+      try {
+        yearlyData = await window.kakeiboData.saveCategoryAnnualBudget(year, category, value);
+        const cacheKey = 'kakeibo_budget_initial_' + year;
+        const cached = cacheGet(cacheKey);
+        cacheSet(cacheKey, { yearlyData: yearlyData, events: (cached && cached.events) || eventList });
+        renderYearSummary();
+        renderMonthList();
+        const tick = document.querySelector('.annualCat[data-category="' + CSS.escape(category) + '"] .savedTick');
+        if (tick) { tick.classList.add('show'); setTimeout(() => tick.classList.remove('show'), 1200); }
+        if (selectedYearMonth) loadMonthDetail(selectedYearMonth);
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    });
+
+    let eventList = [];
+
+    function renderEventList() {
+      const el = document.getElementById('eventList');
+      if (eventList.length === 0) {
+        el.innerHTML = '<div class="sectionNote">イベントはまだありません</div>';
+        return;
+      }
+      el.innerHTML = eventList.map((ev) => {
+        const actualText = ev.pct !== null
+          ? fmtYen(ev.actual) + ' / ' + fmtYen(ev.budget) + '（' + ev.pct + '%）'
+          : fmtYen(ev.actual) + '（予算未設定）';
+        return (
+          '<div class="annualCat" data-event-id="' + ev.id + '">' +
+            '<div class="catHead"><span class="catName">' + ev.name + '</span>' +
+              '<span class="catActual' + (ev.pct > 100 ? ' over' : '') + '">' + actualText + '</span></div>' +
+            (ev.pct !== null
+              ? '<div class="progress-track"><div class="progress-fill' + (ev.pct > 100 ? ' over' : '') + '" style="width:' + Math.min(ev.pct, 100) + '%"></div></div>'
+              : '') +
+            '<div class="eventActions">' +
+              '<div class="annualInputRow">' +
+                '<label>予算</label>' +
+                '<input type="number" class="eventBudgetInput" data-id="' + ev.id + '" value="' + (ev.budget != null ? ev.budget : '') + '" />' +
+                '<span class="savedTick">✓</span>' +
+              '</div>' +
+              '<button type="button" class="ghost eventDeleteBtn" data-id="' + ev.id + '">削除</button>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    async function loadEvents() {
+      try { eventList = await window.kakeiboData.listEventsWithActuals(); renderEventList(); }
+      catch (err) { setStatus('エラー: ' + err.message, 'err'); }
+    }
+
+    document.getElementById('eventList').addEventListener('change', async (e) => {
+      const input = e.target.closest('.eventBudgetInput');
+      if (!input) return;
+      const id = input.dataset.id;
+      try {
+        eventList = await window.kakeiboData.saveEvent({ id: id, name: eventList.find((ev) => ev.id === id).name, budgetAmount: input.value });
+        renderEventList();
+        const tick = document.querySelector('.annualCat[data-event-id="' + id + '"] .savedTick');
+        if (tick) { tick.classList.add('show'); setTimeout(() => tick.classList.remove('show'), 1200); }
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    });
+
+    document.getElementById('eventList').addEventListener('click', async (e) => {
+      const btn = e.target.closest('.eventDeleteBtn');
+      if (!btn) return;
+      if (!confirm('このイベントを削除します。よろしいですか？')) return;
+      try {
+        await window.kakeiboData.removeEvent(btn.dataset.id);
+        setStatus('✓ イベントを削除しました', 'ok');
+        loadEvents();
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    });
+
+    document.getElementById('addEventBtn').addEventListener('click', async () => {
+      const nameInput = document.getElementById('newEventName');
+      const budgetInput = document.getElementById('newEventBudget');
+      const name = nameInput.value.trim();
+      if (!name) { setStatus('イベント名を入力してください', 'err'); return; }
+      try {
+        await window.kakeiboData.saveEvent({ id: null, name: name, budgetAmount: budgetInput.value });
+        nameInput.value = ''; budgetInput.value = '';
+        setStatus('✓ イベント「' + name + '」を作成しました', 'ok');
+        loadEvents();
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    });
+
+    function renderMonthList() {
+      const listEl = document.getElementById('monthList');
+      listEl.innerHTML = '';
+      yearlyData.months.forEach((m) => {
+        const monthNum = Number(m.yearMonth.slice(5, 7));
+        const row = document.createElement('div');
+        row.className = 'monthItem' + (m.yearMonth === selectedYearMonth ? ' active' : '');
+        const mActual = showGross ? m.actualGrossTotal : m.actualTotal;
+        const mPct = showGross ? m.pctGross : m.pct;
+        const amtHtml = m.budgetTotal > 0
+          ? fmtYen(mActual) + ' / ' + fmtYen(m.budgetTotal) + '（' + mPct + '%）'
+          : '<span class="warnBadge">⚠ 未設定</span>';
+        row.innerHTML = '<div class="head"><span class="m">' + monthNum + '月</span><span>' + amtHtml + '</span></div>';
+        row.addEventListener('click', () => openMonth(m.yearMonth));
+        listEl.appendChild(row);
+      });
+    }
+
+    function applyInitialData_(result) {
+      yearlyData = result.yearlyData;
+      year = String(result.yearlyData.year);
+      eventList = result.events;
+      renderYearSummary();
+      renderMonthList();
+      renderEventList();
+    }
+
+    async function loadInitial(y, afterRender) {
+      const cacheKey = 'kakeibo_budget_initial_' + y;
+      const cached = cacheGet(cacheKey);
+      if (cached) applyInitialData_(cached); else setStatus('読み込み中...', null);
+      try {
+        const result = await window.kakeiboData.getBudgetScreenInitialData(y);
+        cacheSet(cacheKey, result);
+        applyInitialData_(result);
+        setStatus('', null);
+        if (afterRender) afterRender();
+      } catch (err) {
+        if (!cached) setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    async function loadYear(y, afterRender) {
+      const cacheKey = 'kakeibo_budget_initial_' + y;
+      const cached = cacheGet(cacheKey);
+      if (cached) applyInitialData_(cached); else setStatus('読み込み中...', null);
+      try {
+        const result = await window.kakeiboData.getYearlyBudgetSummary(y);
+        yearlyData = result;
+        year = String(result.year);
+        renderYearSummary();
+        renderMonthList();
+        cacheSet(cacheKey, { yearlyData: result, events: (cached && cached.events) || eventList });
+        setStatus('', null);
+        if (afterRender) afterRender();
+      } catch (err) {
+        if (!cached) setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    document.getElementById('prevYearBtn').addEventListener('click', () => loadYear(Number(year) - 1));
+    document.getElementById('nextYearBtn').addEventListener('click', () => loadYear(Number(year) + 1));
+
+    async function loadMonthDetail(yearMonth, afterRender) {
+      const cacheKey = 'kakeibo_budget_month_' + yearMonth;
+      const cached = cacheGet(cacheKey);
+      if (cached) { currentBudgets = cached; renderMonthSummary(); renderCategoryFields(); } else { setStatus('読み込み中...', null); }
+      try {
+        const result = await window.kakeiboData.getBudgetsForMonth(yearMonth);
+        cacheSet(cacheKey, result);
+        currentBudgets = result;
+        renderMonthSummary();
+        renderCategoryFields();
+        setStatus('', null);
+        if (afterRender) afterRender();
+      } catch (err) {
+        if (!cached) setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    function openMonth(yearMonth) {
+      selectedYearMonth = yearMonth;
+      renderMonthList();
+      document.getElementById('monthDetailTitle').textContent = Number(yearMonth.slice(5, 7)) + '月のカテゴリ別予算';
+      monthDetail.style.display = 'block';
+      monthDetail.scrollIntoView({ behavior: 'smooth' });
+      loadMonthDetail(yearMonth);
+    }
+
+    function renderYearPaceHtml(pct) {
+      if (pct === null) return '';
+      const today = new Date();
+      if (Number(year) !== today.getFullYear()) return '';
+      const startOfYear = new Date(today.getFullYear(), 0, 1);
+      const dayOfYear = Math.floor((today - startOfYear) / 86400000) + 1;
+      const daysInYear = (new Date(today.getFullYear(), 1, 29).getMonth() === 1) ? 366 : 365;
+      const elapsedPct = Math.round((dayOfYear / daysInYear) * 100);
+      const diff = pct - elapsedPct;
+      let cls = 'neutral', msg = 'ほぼペース通りです';
+      if (diff >= 10) { cls = 'warn'; msg = '経過日数のペースより+' + diff + 'pt多く使っています'; }
+      else if (diff <= -10) { cls = 'good'; msg = '経過日数のペースより' + Math.abs(diff) + 'pt余裕があります'; }
+      return '<div class="paceBox ' + cls + '"><div class="paceHead">ペース（今年は' + elapsedPct + '%経過）</div><div>予算消化率' + pct + '% ・ ' + msg + '</div></div>';
+    }
+
+    function renderPaceHtml(yearMonth, pct) {
+      if (pct === null) return '';
+      const today = new Date();
+      const todayYearMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-01';
+      if (yearMonth !== todayYearMonth) return '';
+      const dayOfMonth = today.getDate();
+      const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const elapsedPct = Math.round((dayOfMonth / daysInMonth) * 100);
+      const diff = pct - elapsedPct;
+      let cls = 'neutral', msg = 'ほぼペース通りです';
+      if (diff >= 10) { cls = 'warn'; msg = '経過日数のペースより+' + diff + 'pt多く使っています'; }
+      else if (diff <= -10) { cls = 'good'; msg = '経過日数のペースより' + Math.abs(diff) + 'pt余裕があります'; }
+      return '<div class="paceBox ' + cls + '"><div class="paceHead">ペース（本日は月の' + dayOfMonth + '日目/' + daysInMonth + '日中・' + elapsedPct + '%経過）</div><div>予算消化率' + pct + '% ・ ' + msg + '</div></div>';
+    }
+
+    function renderMonthSummary() {
+      const actualTotal = Object.values(currentBudgets.categories).reduce((sum, c) => sum + (showGross ? c.actualGross : c.actual), 0);
+      const budgetTotal = currentBudgets.budgetTotal;
+      const pct = budgetTotal > 0 ? Math.round((actualTotal / budgetTotal) * 100) : null;
+      const remaining = budgetTotal - actualTotal;
+      const card = document.getElementById('monthSummaryCard');
+      card.innerHTML =
+        reimbToggleHtml('month') +
+        '<div class="pctHead"><span class="pctVal' + (pct > 100 ? ' over' : '') + '">' + (pct === null ? '未設定' : pct + '%') + '</span><span class="pctLabel">消化率</span></div>' +
+        '<div class="progress-track"><div class="progress-fill' + (pct > 100 ? ' over' : '') + '" style="width:' + Math.min(pct || 0, 100) + '%"></div></div>' +
+        renderPaceHtml(selectedYearMonth, pct) +
+        '<div class="row" style="margin-top:10px;"><span>予算</span><span>' + fmtYen(budgetTotal) + '</span></div>' +
+        '<div class="row"><span>実績</span><span>' + fmtYen(actualTotal) + '</span></div>' +
+        '<div class="row"><span>' + (remaining >= 0 ? '残り' : '超過') + '</span><span>' + fmtYen(Math.abs(remaining)) + '</span></div>' +
+        renderProjectionHtml('予算通り使い切った場合の想定精算額', currentBudgets.ratioKazuichi, currentBudgets.ratioNarumi, currentBudgets.projectedKazuichi, currentBudgets.projectedNarumi);
+      wireReimbToggle('month', () => { renderMonthSummary(); renderCategoryFields(); });
+    }
+
+    function renderCategoryFields() {
+      fieldsEl.innerHTML = '';
+      const uncategorized = currentBudgets.categories['未分類'];
+      if (uncategorized && uncategorized.actual > 0) {
+        const warn = document.createElement('div');
+        warn.className = 'catField';
+        warn.innerHTML = '<div class="catHead"><span class="catName">未分類</span><span class="catActual over">' + fmtYen(uncategorized.actual) + '（要分類・表編集画面で確認してください）</span></div>';
+        fieldsEl.appendChild(warn);
+      }
+      Object.keys(CATEGORY_MAP).filter((category) => category !== '未分類').forEach((category) => {
+        const c = currentBudgets.categories[category];
+        const actual = showGross ? c.actualGross : c.actual;
+        const pct = showGross ? c.pctGross : c.pct;
+        const wrap = document.createElement('div');
+        wrap.className = 'catField';
+        const actualText = pct !== null ? fmtYen(actual) + ' / ' + fmtYen(c.budget) + '（' + pct + '%達成）' : fmtYen(actual) + '（予算未設定）';
+        wrap.innerHTML =
+          '<div class="catHead"><span class="catName">' + category + '</span><span class="catActual' + (pct > 100 ? ' over' : '') + '">' + actualText + '</span></div>' +
+          (pct !== null ? '<div class="progress-track"><div class="progress-fill' + (pct > 100 ? ' over' : '') + '" style="width:' + Math.min(pct, 100) + '%"></div></div>' : '');
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.dataset.category = category;
+        input.value = (c.budget !== null && c.budget !== undefined) ? c.budget : '';
+        wrap.appendChild(input);
+        fieldsEl.appendChild(wrap);
+      });
+    }
+
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      if (!selectedYearMonth) return;
+      const amounts = {};
+      fieldsEl.querySelectorAll('input').forEach((input) => { amounts[input.dataset.category] = input.value; });
+      setStatus('保存中...', null);
+      try {
+        await window.kakeiboData.saveBudgets(selectedYearMonth, amounts);
+        loadMonthDetail(selectedYearMonth, () => {
+          loadYear(Number(year), () => { setStatus('✓ 保存しました', 'ok'); });
+        });
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    });
+
+    function startBudgetScreen_() {
+      loadInitial(year, () => { if (initialOpenMonth) openMonth(initialOpenMonth); });
+    }
+    window.kakeiboReady.then((ok) => {
+      if (!ok) { setStatus('ログインできませんでした。LINEアプリから開き直してください。', 'err'); return; }
+      startBudgetScreen_();
+    });
+  </script>
+</body>
+</html>
