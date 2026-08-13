@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>取引一覧（表形式）</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-Ae2dYXxD';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --panel2: #F7FAF8; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --success-bg: #E4F7EC; --success-border: #A9E6C5;
+      --warn-bg: #FCEFE4; --warn-ink: #A85C1C; --info-bg: #E8EEFB; --info-ink: #2A4E9E;
+      --imported-bg: #F0EAFB; --imported-ink: #6A3EA8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --panel2: #191F1C; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --success-bg: #163627; --success-border: #2F5A45;
+        --warn-bg: #2E2114; --warn-ink: #E3A15C; --info-bg: #1A2436; --info-ink: #7FA0E8;
+        --imported-bg: #2B1F3A; --imported-ink: #B79AE0;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    h2 { font-size: 16px; margin: 0 0 12px; }
+    a.backLink { display: inline-block; margin-bottom: 12px; font-size: 12px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .yearNav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .yearNav .label { font-size: 15px; font-weight: bold; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); border-radius: 8px; width: 28px; height: 28px; padding: 0; font-size: 13px; }
+    .hint { font-size: 11px; color: var(--faint); margin-bottom: 10px; }
+    .exportRow { display: flex; gap: 8px; margin-bottom: 10px; }
+    button.ghost.exportBtn { width: auto; height: auto; padding: 6px 12px; font-size: 12px; margin: 0; white-space: nowrap; }
+    .searchInput { width: 100%; padding: 9px 10px; margin-bottom: 8px; font-size: 14px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; background: var(--panel); color: var(--ink); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 100px; }
+    .chip button { background: none; border: none; color: var(--accent-ink); font-weight: bold; font-size: 12px; padding: 0; cursor: pointer; line-height: 1; }
+    .chip.clearAll { background: transparent; border: 1px solid var(--border); color: var(--faint); }
+    .tableWrap { overflow: auto; max-height: 70vh; border: 1px solid var(--border); border-radius: 10px; -webkit-overflow-scrolling: touch; }
+    table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 12px; }
+    thead th {
+      position: sticky; top: 0; background: var(--accent-soft); color: var(--muted);
+      font-weight: bold; text-align: left; padding: 6px; border-bottom: 1px solid var(--border);
+      white-space: nowrap; font-size: 10.5px;
+    }
+    .thHead { display: flex; align-items: center; gap: 3px; }
+    .thLabel { cursor: pointer; user-select: none; }
+    .sortMark { font-size: 8px; color: var(--faint); }
+    .sortMark.active { color: var(--accent); }
+    .filterBtn { background: none; border: none; padding: 1px 2px; cursor: pointer; font-size: 10px; color: var(--faint); border-radius: 3px; }
+    .filterBtn.active { color: var(--accent); background: var(--success-bg); }
+    tbody td { padding: 4px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tbody tr:nth-child(even) { background: var(--panel2); }
+    input, select {
+      width: 100%; border: 1px solid transparent; background: transparent; color: var(--ink);
+      font-size: 12px; padding: 5px 4px; border-radius: 6px; font-family: inherit;
+    }
+    input:hover, select:hover { border-color: var(--border); }
+    input:focus, select:focus { border-color: var(--accent); outline: none; background: var(--accent-soft); }
+    input[type="date"] { min-width: 108px; }
+    input[type="number"] { min-width: 76px; text-align: right; }
+    .memoCell input { min-width: 120px; }
+    .catCell select { min-width: 108px; }
+    .recurGroupCell { min-width: 90px; color: var(--muted); }
+    .muted { color: var(--faint); }
+    .badge { font-size: 9.5px; font-weight: bold; padding: 2px 6px; border-radius: 100px; background: var(--accent-soft); color: var(--muted); white-space: nowrap; }
+    .badge.gmail { background: var(--warn-bg); color: var(--warn-ink); }
+    .badge.recurring { background: var(--info-bg); color: var(--info-ink); }
+    .badge.imported { background: var(--imported-bg); color: var(--imported-ink); }
+    .badge.subsidy { background: var(--success-bg); color: var(--accent-ink); margin-left: 4px; }
+    input.negAmt, input.negAmt:focus { color: var(--accent-ink); font-weight: bold; }
+    .chip.subsidy { background: var(--success-bg); color: var(--accent-ink); border-color: var(--success-border); }
+    .delBtn { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--danger); font-size: 13px; }
+    .savedTick { color: var(--accent-ink); font-size: 10px; margin-left: 3px; opacity: 0; transition: opacity .4s; }
+    .savedTick.show { opacity: 1; }
+    .summary { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 10px; padding: 0 2px; }
+    .summary b { color: var(--ink); }
+    .empty { font-size: 12px; color: var(--faint); text-align: center; padding: 24px 0; }
+    #status { margin-top: 12px; text-align: center; font-size: 12px; }
+    .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 10px; }
+    @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    .skel-table { height: 300px; }
+    #filterPanel { display: none; background: var(--accent-soft2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+    #filterPanel .panelHead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: bold; }
+    #filterPanel .panelHead button { width: auto; margin: 0; padding: 2px 8px; font-size: 16px; background: none; border: none; color: var(--muted); line-height: 1; }
+    #filterPanel .checkList { max-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    #filterPanel .checkList label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: normal; }
+    #filterPanel .checkList input[type="checkbox"] { width: auto; }
+    #filterPanel .rangeRow { display: flex; gap: 8px; align-items: center; }
+    #filterPanel .rangeRow input { margin-top: 0; }
+    #filterPanel .panelActions { display: flex; gap: 8px; margin-top: 10px; }
+    #filterPanel .panelActions button { width: auto; padding: 6px 14px; font-size: 12px; margin-top: 0; }
+    #filterPanel .panelActions button.apply { background: var(--accent); color: #fff; border: none; border-radius: 6px; }
+    #filterPanel .panelActions button.clear { background: transparent; color: var(--danger); border: 1px solid var(--danger); border-radius: 6px; }
+    #filterPanel .quickSelect { display: flex; gap: 10px; font-size: 11px; margin-bottom: 6px; }
+    #filterPanel .quickSelect a { color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./home.html">← ホームに戻る</a>
+  <h2>取引一覧（表形式）</h2>
+
+  <div class="yearNav">
+    <button class="ghost" id="prevYearBtn" type="button" aria-label="前年">◀</button>
+    <div class="label" id="yearLabel"></div>
+    <button class="ghost" id="nextYearBtn" type="button" aria-label="翌年">▶</button>
+  </div>
+  <div class="exportRow">
+    <button class="ghost exportBtn" id="exportCsvBtn" type="button">⬇ 表示中の内容をCSV</button>
+    <button class="ghost exportBtn" id="exportAllCsvBtn" type="button">⬇ 全期間をCSV</button>
+  </div>
+
+  <div class="hint">セルを直接編集すると自動保存されます。列見出しをタップで並び替え、フィルターアイコンで絞り込み</div>
+
+  <input type="text" id="searchInput" class="searchInput" placeholder="🔍 店名・メモ・カテゴリなどを横断検索" />
+
+  <div class="chips" id="chips"></div>
+  <div id="filterPanel"></div>
+  <div class="summary" id="summary"></div>
+
+  <div id="tableWrap" class="tableWrap skel skel-table"></div>
+  <div id="status"></div>
+
+  <script>
+    const CATEGORY_MAP = window.KAKEIBO_CATEGORY_MAP;
+    const FAMILY_MEMBERS = window.KAKEIBO_FAMILY_MEMBERS;
+    let EVENT_NAMES = [];
+    const qs = new URLSearchParams(location.search);
+    let year = qs.get('year') || String(new Date().getFullYear());
+    let transactions = [];
+    let sortState = { field: null, dir: 'asc' };
+    let filters = {};
+    let activeFilterField = null;
+    let reimbursementFilter = null;
+    let eventFilter = null;
+    let searchText = '';
+    const SEARCH_FIELDS = ['name', 'category', 'subcategory', 'billed_to', 'paid_by', 'event_tag', 'recurring_group_name'];
+
+    const SOURCE_LABELS = {
+      gmail_auto: 'カード自動', recurring_auto: '定期収支', manual_import: '移行データ',
+      db_transactions_import: '移行データ', line_manual: '手入力'
+    };
+
+    const COLUMNS = [
+      { key: 'occurred_at', label: '日付', type: 'date' },
+      { key: 'category', label: 'カテゴリ', type: 'select', options: () => Object.keys(CATEGORY_MAP) },
+      { key: 'subcategory', label: 'サブカテゴリ', type: 'select', options: () => distinctValues('subcategory') },
+      { key: 'name', label: '名称', type: 'text' },
+      { key: 'amount', label: '金額', type: 'number' },
+      { key: 'billed_to', label: '負担先', type: 'select', options: () => ['共用'].concat(FAMILY_MEMBERS) },
+      { key: 'paid_by', label: '支払者', type: 'select', options: () => FAMILY_MEMBERS.concat(['']) },
+      { key: 'event_tag', label: 'イベント', type: 'select', options: () => distinctValues('event_tag') },
+      { key: 'recurring_group_name', label: '定期グループ', type: 'select', options: () => distinctValues('recurring_group_name') },
+      { key: 'source_channel', label: '出所', type: 'select', options: () => distinctValues('source_channel') }
+    ];
+
+    function distinctValues(key) {
+      const set = new Set();
+      transactions.forEach((t) => set.add(t[key] || ''));
+      return Array.from(set).sort();
+    }
+    function fmtYen(n) {
+      const v = Number(n || 0);
+      return (v < 0 ? '-¥' : '¥') + Math.abs(v).toLocaleString();
+    }
+    function sourceBadge(channel) {
+      const label = SOURCE_LABELS[channel] || '手入力';
+      const cls = channel === 'gmail_auto' ? 'gmail' : channel === 'recurring_auto' ? 'recurring' : (channel === 'manual_import' || channel === 'db_transactions_import') ? 'imported' : '';
+      return '<span class="badge' + (cls ? ' ' + cls : '') + '">' + label + '</span>';
+    }
+    function buildCategoryOptions(selected) {
+      let html = '';
+      Object.keys(CATEGORY_MAP).forEach((cat) => {
+        if (cat === '未分類' && selected !== '未分類') return;
+        html += '<option value="' + cat + '"' + (cat === selected ? ' selected' : '') + '>' + cat + '</option>';
+      });
+      return html;
+    }
+    function buildSubcategoryOptions(category, selected) {
+      const subs = CATEGORY_MAP[category] || [];
+      if (subs.length === 0) return '<option value="">―</option>';
+      let html = '';
+      subs.forEach((sub) => { html += '<option value="' + sub + '"' + (sub === selected ? ' selected' : '') + '>' + sub + '</option>'; });
+      return html;
+    }
+    function buildPaidByOptions(selected) {
+      let html = '<option value=""' + (!selected ? ' selected' : '') + '>未設定</option>';
+      FAMILY_MEMBERS.forEach((m) => { html += '<option value="' + m + '"' + (m === selected ? ' selected' : '') + '>' + m + '</option>'; });
+      return html;
+    }
+    function buildBilledToOptions(selected) {
+      let html = '<option value="共用"' + (selected === '共用' || !selected ? ' selected' : '') + '>共用</option>';
+      FAMILY_MEMBERS.forEach((m) => { html += '<option value="' + m + '"' + (m === selected ? ' selected' : '') + '>' + m + '（貸し借り）</option>'; });
+      return html;
+    }
+    function buildEventTagOptions(selected) {
+      let html = '<option value=""' + (!selected ? ' selected' : '') + '>―</option>';
+      EVENT_NAMES.forEach((name) => { html += '<option value="' + name + '"' + (name === selected ? ' selected' : '') + '>' + name + '</option>'; });
+      if (selected && EVENT_NAMES.indexOf(selected) === -1) html += '<option value="' + selected + '" selected>' + selected + '</option>';
+      return html;
+    }
+    function buildRow(item) {
+      return (
+        '<tr data-id="' + item.id + '">' +
+          '<td><input type="date" data-field="occurred_at" value="' + item.occurred_at + '" /></td>' +
+          '<td class="catCell"><select data-field="category">' + buildCategoryOptions(item.category) + '</select></td>' +
+          '<td class="catCell"><select data-field="subcategory">' + buildSubcategoryOptions(item.category, item.subcategory) + '</select></td>' +
+          '<td class="memoCell"><input type="text" data-field="name" value="' + (item.name || '').replace(/"/g, '&quot;') + '" />' +
+            (item.is_reimbursement ? '<span class="badge subsidy">補助</span>' : '') +
+            '<span class="savedTick">✓</span></td>' +
+          '<td><input type="number" data-field="amount" class="' + (Number(item.amount) < 0 ? 'negAmt' : '') + '" value="' + item.amount + '" /></td>' +
+          '<td class="catCell"><select data-field="billed_to">' + buildBilledToOptions(item.billed_to) + '</select></td>' +
+          '<td class="catCell"><select data-field="paid_by">' + buildPaidByOptions(item.paid_by) + '</select></td>' +
+          '<td class="catCell"><select data-field="event_tag">' + buildEventTagOptions(item.event_tag) + '</select></td>' +
+          '<td class="recurGroupCell">' + (item.recurring_group_name || '<span class="muted">―</span>') + '</td>' +
+          '<td>' + sourceBadge(item.source_channel) + '</td>' +
+          '<td><button class="delBtn" type="button" aria-label="この行を削除">✕</button></td>' +
+        '</tr>'
+      );
+    }
+
+    function applyFiltersFn(rows) {
+      const q = searchText.trim().toLowerCase();
+      return rows.filter((r) => {
+        if (reimbursementFilter === 'only' && !r.is_reimbursement) return false;
+        if (reimbursementFilter === 'exclude' && r.is_reimbursement) return false;
+        if (eventFilter === 'only' && !r.event_tag) return false;
+        if (eventFilter === 'exclude' && r.event_tag) return false;
+        if (q && !SEARCH_FIELDS.some((key) => (r[key] || '').toString().toLowerCase().includes(q))) return false;
+        for (const key in filters) {
+          const f = filters[key];
+          if (!f) continue;
+          if (f.values) {
+            if (!f.values.has(r[key] || '')) return false;
+          } else if (f.from !== undefined || f.to !== undefined) {
+            if (f.from && r[key] < f.from) return false;
+            if (f.to && r[key] > f.to) return false;
+          } else if (f.min !== undefined || f.max !== undefined) {
+            const n = Number(r[key]);
+            if (f.min !== '' && f.min !== undefined && n < Number(f.min)) return false;
+            if (f.max !== '' && f.max !== undefined && n > Number(f.max)) return false;
+          } else if (f.contains !== undefined) {
+            const v = (r[key] || '').toString().toLowerCase();
+            if (!v.includes(f.contains.toLowerCase())) return false;
+          }
+        }
+        return true;
+      });
+    }
+    function applySortFn(rows) {
+      if (!sortState.field) return rows;
+      const { field, dir } = sortState;
+      return rows.slice().sort((a, b) => {
+        let av = a[field], bv = b[field];
+        if (field === 'amount') { av = Number(av); bv = Number(bv); }
+        else { av = (av || '').toString(); bv = (bv || '').toString(); }
+        if (av < bv) return dir === 'asc' ? -1 : 1;
+        if (av > bv) return dir === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    function visibleRows() { return applySortFn(applyFiltersFn(transactions)); }
+    function fieldLabel(key) { const col = COLUMNS.find((c) => c.key === key); return col ? col.label : key; }
+    function filterSummaryText(key, f) {
+      if (f.values) return Array.from(f.values).map((v) => v || '未設定').join('/');
+      if (f.from !== undefined || f.to !== undefined) return (f.from || '') + '〜' + (f.to || '');
+      if (f.min !== undefined || f.max !== undefined) return (f.min || '0') + '〜' + (f.max || '∞');
+      if (f.contains !== undefined) return '「' + f.contains + '」を含む';
+      return '';
+    }
+
+    function renderChips() {
+      const el = document.getElementById('chips');
+      let html =
+        '<span class="chip' + (reimbursementFilter === 'only' ? ' subsidy' : '') + '" id="chipReimbOnly">🏷 補助・還付のみ表示</span>' +
+        '<span class="chip' + (reimbursementFilter === 'exclude' ? ' subsidy' : '') + '" id="chipReimbExclude">🏷 補助・還付を除く</span>' +
+        '<span class="chip' + (eventFilter === 'only' ? ' subsidy' : '') + '" id="chipEventOnly">🎫 イベントのみ表示</span>' +
+        '<span class="chip' + (eventFilter === 'exclude' ? ' subsidy' : '') + '" id="chipEventExclude">🎫 イベントを除く</span>';
+      const keys = Object.keys(filters).filter((k) => filters[k]);
+      if (keys.length > 0) {
+        html += keys.map((k) =>
+          '<span class="chip">' + fieldLabel(k) + ': ' + filterSummaryText(k, filters[k]) +
+          '<button type="button" data-clear="' + k + '" aria-label="' + fieldLabel(k) + 'の絞り込みを解除">✕</button></span>'
+        ).join('');
+        html += '<span class="chip clearAll" id="clearAllChip">すべて解除</span>';
+      }
+      el.innerHTML = html;
+      document.getElementById('chipReimbOnly').addEventListener('click', () => { reimbursementFilter = reimbursementFilter === 'only' ? null : 'only'; renderAll(); });
+      document.getElementById('chipReimbExclude').addEventListener('click', () => { reimbursementFilter = reimbursementFilter === 'exclude' ? null : 'exclude'; renderAll(); });
+      document.getElementById('chipEventOnly').addEventListener('click', () => { eventFilter = eventFilter === 'only' ? null : 'only'; renderAll(); });
+      document.getElementById('chipEventExclude').addEventListener('click', () => { eventFilter = eventFilter === 'exclude' ? null : 'exclude'; renderAll(); });
+      el.querySelectorAll('[data-clear]').forEach((btn) => { btn.addEventListener('click', () => { delete filters[btn.dataset.clear]; renderAll(); }); });
+      const clearAllChip = document.getElementById('clearAllChip');
+      if (clearAllChip) clearAllChip.addEventListener('click', () => { filters = {}; renderAll(); });
+    }
+
+    function closeFilterPanel() { activeFilterField = null; document.getElementById('filterPanel').style.display = 'none'; }
+
+    function openFilterPanel(key) {
+      activeFilterField = key;
+      const col = COLUMNS.find((c) => c.key === key);
+      const panel = document.getElementById('filterPanel');
+      const current = filters[key];
+      let bodyHtml = '';
+      if (col.type === 'select') {
+        const options = col.options();
+        const checkedSet = current && current.values ? current.values : null;
+        bodyHtml =
+          '<div class="quickSelect"><a href="#" id="selAll">すべて選択</a><a href="#" id="selNone">すべて解除</a></div>' +
+          '<div class="checkList">' +
+          options.map((opt) => {
+            const checked = checkedSet ? checkedSet.has(opt) : true;
+            const label = opt === '' ? '未設定' : opt;
+            return '<label><input type="checkbox" value="' + opt + '"' + (checked ? ' checked' : '') + ' />' + label + '</label>';
+          }).join('') + '</div>';
+      } else if (col.type === 'date') {
+        bodyHtml = '<div class="rangeRow"><input type="date" id="rangeFrom" value="' + (current && current.from ? current.from : '') + '" />〜<input type="date" id="rangeTo" value="' + (current && current.to ? current.to : '') + '" /></div>';
+      } else if (col.type === 'number') {
+        bodyHtml = '<div class="rangeRow"><input type="number" id="rangeMin" placeholder="最小" value="' + (current && current.min !== undefined ? current.min : '') + '" />〜<input type="number" id="rangeMax" placeholder="最大" value="' + (current && current.max !== undefined ? current.max : '') + '" /></div>';
+      } else {
+        bodyHtml = '<input type="text" id="containsInput" placeholder="含む文字列" value="' + (current && current.contains ? current.contains : '') + '" />';
+      }
+      panel.innerHTML =
+        '<div class="panelHead"><span>' + col.label + 'で絞り込み</span><button type="button" id="closePanelBtn" aria-label="絞り込みパネルを閉じる">✕</button></div>' +
+        bodyHtml +
+        '<div class="panelActions"><button type="button" class="apply" id="applyFilterBtn">適用</button><button type="button" class="clear" id="clearFilterBtn">この列の絞り込み解除</button></div>';
+      panel.style.display = 'block';
+      document.getElementById('closePanelBtn').addEventListener('click', closeFilterPanel);
+      document.getElementById('clearFilterBtn').addEventListener('click', () => { delete filters[key]; closeFilterPanel(); renderAll(); });
+      document.getElementById('applyFilterBtn').addEventListener('click', () => {
+        if (col.type === 'select') {
+          const checked = Array.from(panel.querySelectorAll('.checkList input:checked')).map((el) => el.value);
+          const all = col.options();
+          if (checked.length === all.length) delete filters[key]; else filters[key] = { values: new Set(checked) };
+        } else if (col.type === 'date') {
+          const from = document.getElementById('rangeFrom').value, to = document.getElementById('rangeTo').value;
+          if (!from && !to) delete filters[key]; else filters[key] = { from: from || undefined, to: to || undefined };
+        } else if (col.type === 'number') {
+          const min = document.getElementById('rangeMin').value, max = document.getElementById('rangeMax').value;
+          if (!min && !max) delete filters[key]; else filters[key] = { min: min || undefined, max: max || undefined };
+        } else {
+          const val = document.getElementById('containsInput').value;
+          if (!val) delete filters[key]; else filters[key] = { contains: val };
+        }
+        closeFilterPanel();
+        renderAll();
+      });
+      if (col.type === 'select') {
+        document.getElementById('selAll').addEventListener('click', (e) => { e.preventDefault(); panel.querySelectorAll('.checkList input').forEach((el) => { el.checked = true; }); });
+        document.getElementById('selNone').addEventListener('click', (e) => { e.preventDefault(); panel.querySelectorAll('.checkList input').forEach((el) => { el.checked = false; }); });
+      }
+    }
+
+    function toggleSort(key) {
+      if (sortState.field !== key) { sortState = { field: key, dir: 'asc' }; }
+      else if (sortState.dir === 'asc') { sortState.dir = 'desc'; }
+      else { sortState = { field: null, dir: 'asc' }; }
+      renderAll();
+    }
+    function sortMark(key) {
+      if (sortState.field !== key) return '<span class="sortMark">⇅</span>';
+      return '<span class="sortMark active">' + (sortState.dir === 'asc' ? '▲' : '▼') + '</span>';
+    }
+    function buildHeaderRow() {
+      return '<tr>' + COLUMNS.map((col) => {
+        const filterActive = !!filters[col.key];
+        return '<th><div class="thHead"><span class="thLabel" data-sort="' + col.key + '">' + col.label + ' ' + sortMark(col.key) + '</span><button type="button" class="filterBtn' + (filterActive ? ' active' : '') + '" data-filter="' + col.key + '">▾</button></div></th>';
+      }).join('') + '<th></th>';
+    }
+
+    function renderAll() {
+      renderChips();
+      const wrap = document.getElementById('tableWrap');
+      wrap.classList.remove('skel', 'skel-table');
+      const rows = visibleRows();
+      if (transactions.length === 0) {
+        wrap.innerHTML = '<div class="empty">この年の記録がありません</div>';
+        document.getElementById('summary').textContent = '';
+        return;
+      }
+      if (rows.length === 0) {
+        wrap.innerHTML = '<div class="empty">条件に合う記録がありません</div>';
+        document.getElementById('summary').textContent = '';
+        return;
+      }
+      wrap.innerHTML = '<table><thead>' + buildHeaderRow() + '</thead><tbody>' + rows.map(buildRow).join('') + '</tbody></table>';
+      const total = rows.reduce((sum, t) => sum + Number(t.amount), 0);
+      const label = (Object.keys(filters).length > 0 || searchText.trim()) ? '絞り込み合計' : (year + '年 合計');
+      document.getElementById('summary').innerHTML = '<span>' + label + '</span><b>' + fmtYen(total) + '（' + rows.length + '件）</b>';
+
+      wrap.querySelectorAll('.thLabel').forEach((el) => { el.addEventListener('click', () => toggleSort(el.dataset.sort)); });
+      wrap.querySelectorAll('.filterBtn').forEach((el) => { el.addEventListener('click', () => openFilterPanel(el.dataset.filter)); });
+
+      wrap.querySelectorAll('tbody tr').forEach((row) => {
+        const id = row.dataset.id;
+        row.querySelector('[data-field="category"]').addEventListener('change', (e) => {
+          const newCategory = e.target.value;
+          const subSelect = row.querySelector('[data-field="subcategory"]');
+          subSelect.innerHTML = buildSubcategoryOptions(newCategory, null);
+          saveField(row, id, 'category', newCategory);
+          saveField(row, id, 'subcategory', subSelect.value);
+        });
+        row.querySelectorAll('input, select').forEach((el) => {
+          if (el.dataset.field === 'category') return;
+          el.addEventListener('change', () => saveField(row, id, el.dataset.field, el.value));
+        });
+        row.querySelector('.delBtn').addEventListener('click', async () => {
+          if (!confirm('この記録を削除しますか？元に戻せません。')) return;
+          try {
+            await window.kakeiboSupabase.from('transactions').delete().eq('id', id);
+            transactions = transactions.filter((t) => t.id !== id);
+            renderAll();
+          } catch (err) {
+            document.getElementById('status').textContent = 'エラー: ' + err.message;
+          }
+        });
+      });
+    }
+
+    async function saveField(row, id, field, value) {
+      try {
+        await window.kakeiboData.updateTransactionField(id, field, value);
+        const tick = row.querySelector('.savedTick');
+        if (tick) { tick.classList.add('show'); setTimeout(() => tick.classList.remove('show'), 1200); }
+        const item = transactions.find((t) => t.id === id);
+        if (item) {
+          item[field] = (field === 'amount') ? Number(value) : (value || null);
+          if (field === 'amount' || field === 'category' || Object.prototype.hasOwnProperty.call(filters, field) || sortState.field === field) {
+            renderAll();
+          }
+        }
+      } catch (err) {
+        document.getElementById('status').textContent = 'エラー: ' + err.message;
+      }
+    }
+
+    const initialCategory = qs.get('category') || '';
+    const initialMonth = qs.get('month') || '';
+    const initialReimb = qs.get('reimb') || '';
+    const initialEvent = qs.get('event') || '';
+
+    function lastDayOfMonth(yearMonth) {
+      const y = Number(yearMonth.slice(0, 4)), m = Number(yearMonth.slice(5, 7));
+      const d = new Date(y, m, 0);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function applyInitialFilters() {
+      if (initialCategory) filters.category = { values: new Set([initialCategory]) };
+      if (initialMonth) filters.occurred_at = { from: initialMonth, to: lastDayOfMonth(initialMonth) };
+      if (initialReimb === 'only' || initialReimb === 'exclude') reimbursementFilter = initialReimb;
+      if (initialEvent === 'only' || initialEvent === 'exclude') eventFilter = initialEvent;
+    }
+
+    async function loadYear(y) {
+      year = String(y);
+      document.getElementById('yearLabel').textContent = year + '年';
+      document.getElementById('tableWrap').classList.add('skel', 'skel-table');
+      document.getElementById('status').textContent = '';
+      closeFilterPanel();
+      try {
+        transactions = await window.kakeiboData.listTransactionsForYear(y);
+        renderAll();
+      } catch (err) {
+        document.getElementById('status').textContent = 'エラー: ' + err.message;
+      }
+    }
+
+    document.getElementById('prevYearBtn').addEventListener('click', () => { filters = {}; loadYear(Number(year) - 1); });
+    document.getElementById('nextYearBtn').addEventListener('click', () => { filters = {}; loadYear(Number(year) + 1); });
+    document.getElementById('searchInput').addEventListener('input', (e) => { searchText = e.target.value; renderAll(); });
+
+    function csvEscape_(v) {
+      const s = (v === null || v === undefined) ? '' : String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+    function downloadTransactionsAsCsv_(rows, filename) {
+      const headers = ['日付', 'カテゴリ', 'サブカテゴリ', '名称', '金額', '負担先', '支払者', 'イベント', '定期グループ', '出所'];
+      const lines = [headers.map(csvEscape_).join(',')];
+      rows.forEach((t) => {
+        lines.push([
+          t.occurred_at, t.category, t.subcategory || '', t.name || '', t.amount,
+          t.billed_to || '', t.paid_by || '', t.event_tag || '', t.recurring_group_name || '',
+          SOURCE_LABELS[t.source_channel] || t.source_channel || ''
+        ].map(csvEscape_).join(','));
+      });
+      const csv = '﻿' + lines.join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    document.getElementById('exportCsvBtn').addEventListener('click', () => {
+      downloadTransactionsAsCsv_(visibleRows(), 'kakeibo_' + year + (searchText.trim() || Object.keys(filters).length > 0 ? '_絞込' : '') + '.csv');
+    });
+    document.getElementById('exportAllCsvBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('exportAllCsvBtn');
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '取得中...';
+      try {
+        const rows = await window.kakeiboData.listAllTransactionsForExport();
+        downloadTransactionsAsCsv_(rows, 'kakeibo_全期間.csv');
+      } catch (err) {
+        document.getElementById('status').textContent = 'エラー: ' + err.message;
+      }
+      btn.disabled = false;
+      btn.textContent = original;
+    });
+
+    async function startTableScreen_() {
+      document.getElementById('yearLabel').textContent = year + '年';
+      try { EVENT_NAMES = await window.kakeiboData.listEventNames(); } catch (e) {}
+      applyInitialFilters();
+      loadYear(year);
+    }
+
+    window.kakeiboReady.then((ok) => {
+      if (!ok) { document.getElementById('status').textContent = 'ログインできませんでした。LINEアプリから開き直してください。'; return; }
+      startTableScreen_();
+    });
+  </script>
+</body>
+</html>
