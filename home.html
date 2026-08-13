@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ホーム</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-xsY90iEG';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --success-bg: #E4F7EC;
+      --warn-bg: #FCEFE4; --warn-border: #E8C39E; --warn-ink: #A85C1C;
+      --info-bg: #E8EEFB; --info-border: #B9CCF0; --info-ink: #2A4E9E; --info-ink2: #3A4E7A;
+      --switch-bg: #F2FBF6; --switch-border: #B9EBCD; --switch-ink: #5B9E78;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --success-bg: #163627;
+        --warn-bg: #2E2114; --warn-border: #4A3420; --warn-ink: #E3A15C;
+        --info-bg: #1A2436; --info-border: #2E4066; --info-ink: #7FA0E8; --info-ink2: #9DB4E8;
+        --switch-bg: #14231A; --switch-border: #2B4A38; --switch-ink: #6FCF9A;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    h2 { font-size: 13px; font-weight: bold; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin: 22px 0 8px; }
+    h2:first-of-type { margin-top: 0; }
+    .frame { border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+    .yearNav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .yearNav .label { font-size: 15px; font-weight: bold; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); border-radius: 8px; width: 28px; height: 28px; padding: 0; font-size: 13px; }
+    .hero { display: block; text-align: center; padding: 6px 0 4px; text-decoration: none; color: inherit; }
+    .hero:active { opacity: 0.7; }
+    .hero .label { font-size: 11px; color: var(--faint); }
+    .hero .amt { font-size: 30px; font-weight: bold; margin-top: 2px; }
+    .miniStats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+    .mini { display: block; background: var(--accent-soft); border-radius: 10px; padding: 9px 8px; text-align: center; text-decoration: none; color: inherit; }
+    .mini:active { background: var(--border); }
+    .mini .k { font-size: 10px; color: var(--faint); margin-bottom: 3px; }
+    .mini .v { font-size: 14px; font-weight: bold; }
+    .mini .v.over { color: var(--danger); }
+    .mini.settle .v { font-size: 12.5px; }
+    .settleBadge { font-size: 9px; color: var(--faint); margin-top: 3px; }
+    .settleBadge.confirmed { color: var(--accent-ink); font-weight: bold; }
+    .unclassifiedBanner { display: none; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+    .unclassifiedBanner a { display: block; color: var(--warn-ink); font-weight: bold; font-size: 13px; text-decoration: none; }
+    .autoImportBanner { display: none; background: var(--info-bg); border: 1px solid var(--info-border); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+    .autoImportBanner .ttl { color: var(--info-ink); font-weight: bold; font-size: 13px; }
+    .autoImportBanner .items { margin-top: 6px; font-size: 12px; color: var(--info-ink2); }
+    .autoImportBanner .items div { padding: 2px 0; }
+    .autoImportBanner a.link { color: var(--info-ink); font-size: 12px; margin-top: 6px; }
+    .settlementBanner { display: none; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+    .settlementBanner a { display: block; color: var(--warn-ink); font-weight: bold; font-size: 13px; text-decoration: none; }
+    .budgetOverBanner { display: none; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+    .budgetOverBanner a { display: block; color: var(--warn-ink); font-weight: bold; font-size: 13px; text-decoration: none; }
+    .paceBox { border-radius: 10px; padding: 9px 11px; margin-top: 10px; font-size: 11.5px; }
+    .paceBox.good { background: var(--success-bg); color: var(--accent-ink); }
+    .paceBox.warn { background: var(--warn-bg); color: var(--warn-ink); }
+    .paceBox.neutral { background: var(--accent-soft); color: var(--muted); }
+    .track { height: 6px; background: var(--accent-soft); border-radius: 100px; overflow: hidden; margin-top: 6px; }
+    .fill { height: 100%; background: var(--accent); }
+    .fill.over { background: var(--danger); }
+    .mini .track { background: var(--panel); border: 1px solid var(--border); }
+    .catBars { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .catBarsTtl { font-size: 10.5px; color: var(--faint); letter-spacing: 0.03em; margin-bottom: 4px; }
+    a.catBar { display: block; text-decoration: none; color: inherit; padding: 4px 6px; margin: -4px -6px; border-radius: 8px; }
+    a.catBar:active { background: var(--accent-soft); }
+    .catBar .head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; margin-bottom: 4px; }
+    .catBar .head .name { font-weight: 600; }
+    .catBar .head .amt { color: var(--muted); font-size: 11px; }
+    .catBar .head .amt b { color: var(--ink); font-weight: bold; }
+    .catBar .head .amt.over b { color: var(--danger); }
+    .catBar .noBudget { font-size: 10.5px; color: var(--faint); }
+    .catBar .subBreak { font-size: 10.5px; color: var(--faint); margin-top: 4px; }
+    .trendchart { display: flex; align-items: flex-end; gap: 4px; height: 80px; margin-top: 14px; }
+    .trendchart .col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+    .trendchart .col .bar { width: 100%; max-width: 14px; border-radius: 3px 3px 1px 1px; background: var(--accent-soft); border: 1px solid var(--border); }
+    .trendchart .col .bar.now { background: var(--accent); border-color: var(--accent); }
+    .trendchart .col .m { font-size: 8.5px; color: var(--faint); margin-top: 3px; }
+    .trend-summary { display: flex; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--faint); }
+    .trend-summary b { color: var(--ink); }
+    .empty { font-size: 12px; color: var(--faint); text-align: center; padding: 10px 0; }
+    a.link { display: block; margin-top: 8px; font-size: 13px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .navlink { display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--border); margin-top: 16px; text-decoration: none; color: inherit; }
+    .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 6px; }
+    @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    .skel-frame { height: 220px; }
+    * { box-sizing: border-box; }
+    .pagerHead { display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+    .pagerTabs { display: flex; background: var(--accent-soft); border-radius: 100px; padding: 3px; gap: 2px; }
+    .pagerTabs button { border: none; background: transparent; font-family: inherit; font-size: 12.5px; font-weight: bold; color: var(--muted); padding: 7px 18px; border-radius: 100px; }
+    .pagerTabs button.active { background: var(--panel); color: var(--accent-ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+    .pagerViewport { overflow: hidden; transition: height 0.2s ease; }
+    .pagerTrack { display: flex; align-items: flex-start; width: 200%; touch-action: pan-y; }
+    .pagerTrack.dragging { transition: none !important; }
+    .pagerTrack:not(.dragging) { transition: transform 0.28s cubic-bezier(.22,.61,.36,1); }
+    .pagerPage { width: 50%; flex-shrink: 0; padding-right: 4px; }
+    .dots { display: flex; justify-content: center; gap: 6px; margin-top: 12px; }
+    .dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--border); transition: background .2s ease, width .2s ease; }
+    .dots span.active { background: var(--accent); width: 16px; border-radius: 4px; }
+    .switchCompare { display: flex; align-items: center; gap: 6px; margin-top: 4px; margin-bottom: 10px; background: var(--switch-bg); border: 1px solid var(--switch-border); border-radius: 10px; padding: 4px; }
+    .switchCompare .opt { flex: 1; text-align: center; font-size: 11px; font-weight: bold; padding: 6px 4px; border-radius: 8px; color: var(--switch-ink); }
+    .switchCompare .opt.on { background: var(--accent); color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="autoImportBanner" id="autoImportBanner"></div>
+  <div class="unclassifiedBanner" id="unclassifiedBanner"><a id="unclassifiedLink" href="#"></a></div>
+  <div class="settlementBanner" id="settlementBanner"><a id="settlementBannerLink" href="#"></a></div>
+  <div class="budgetOverBanner" id="budgetOverBanner"><a id="budgetOverBannerLink" href="#"></a></div>
+
+  <div class="pagerHead">
+    <div class="pagerTabs">
+      <button type="button" id="tabYear" class="active">今年</button>
+      <button type="button" id="tabMonth">今月</button>
+    </div>
+  </div>
+  <div class="pagerViewport" id="pagerViewport">
+    <div class="pagerTrack" id="pagerTrack">
+      <div class="pagerPage"><div class="frame skel skel-frame" id="yearFrame"></div></div>
+      <div class="pagerPage"><div class="frame skel skel-frame" id="monthFrame"></div></div>
+    </div>
+  </div>
+  <div class="dots"><span class="active" data-dot="0"></span><span data-dot="1"></span></div>
+
+  <a class="navlink" href="./budget-form.html">予算画面で詳細を見る <span>›</span></a>
+  <a class="navlink" href="./settlement-form.html">精算画面で比率を変更 <span>›</span></a>
+  <a class="navlink" href="./recurring-form.html">定期収支を管理する <span>›</span></a>
+  <a class="navlink" href="./history.html">取引履歴を見る・修正する <span>›</span></a>
+  <a class="navlink" href="./table.html">全件を表形式で編集する <span>›</span></a>
+  <a class="navlink" href="./shopping-list.html">🛒 買い物リスト <span>›</span></a>
+
+  <script>
+    let year = String(new Date().getFullYear());
+    let yearMonth = new Date().toISOString().slice(0, 7) + '-01';
+    const TODAY_YEAR_MONTH = yearMonth;
+    let showGross = false;
+    let showExclEvent = false;
+    let lastYearData = null;
+    let lastMonthData = null;
+    let lastMultiYearData = null;
+
+    function variantSuffix_() { return (showGross ? 'Gross' : '') + (showExclEvent ? 'ExclEvent' : ''); }
+    function catActual(c) { return c['actual' + variantSuffix_()]; }
+    function catPct(c) { return c['pct' + variantSuffix_()]; }
+    function settlementFor(data) {
+      const suf = variantSuffix_();
+      if (!data.settlement) return null;
+      if (suf === '') return data.settlement;
+      const key = suf.charAt(0).toLowerCase() + suf.slice(1);
+      return data.settlement[key];
+    }
+    function reimbToggleHtml(idSuffix) {
+      return (
+        '<div class="switchCompare" id="reimbToggle-' + idSuffix + '">' +
+          '<span class="opt' + (!showGross ? ' on' : '') + '" data-mode="net">補助・還付を含む</span>' +
+          '<span class="opt' + (showGross ? ' on' : '') + '" data-mode="gross">補助・還付を除く</span>' +
+        '</div>' +
+        '<div class="switchCompare" id="eventToggle-' + idSuffix + '">' +
+          '<span class="opt' + (!showExclEvent ? ' on' : '') + '" data-mode="incl">イベントを含む</span>' +
+          '<span class="opt' + (showExclEvent ? ' on' : '') + '" data-mode="excl">イベントを除く</span>' +
+        '</div>'
+      );
+    }
+    function rerenderFrames_() {
+      if (lastYearData) { renderYearFrame(lastYearData); renderTrend(lastYearData.trend); }
+      if (lastMonthData) renderMonthFrame(lastMonthData);
+    }
+    function wireReimbToggle(idSuffix) {
+      const reimbEl = document.getElementById('reimbToggle-' + idSuffix);
+      if (reimbEl) {
+        reimbEl.querySelectorAll('.opt').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const wantsGross = btn.dataset.mode === 'gross';
+            if (wantsGross === showGross) return;
+            showGross = wantsGross;
+            rerenderFrames_();
+          });
+        });
+      }
+      const eventEl = document.getElementById('eventToggle-' + idSuffix);
+      if (eventEl) {
+        eventEl.querySelectorAll('.opt').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const wantsExcl = btn.dataset.mode === 'excl';
+            if (wantsExcl === showExclEvent) return;
+            showExclEvent = wantsExcl;
+            rerenderFrames_();
+          });
+        });
+      }
+    }
+    function fmtYen(n) {
+      const v = Number(n || 0);
+      return (v < 0 ? '-¥' : '¥') + Math.abs(v).toLocaleString();
+    }
+
+    function tableFilterParams_() {
+      let p = '';
+      if (showGross) p += '&reimb=exclude';
+      if (showExclEvent) p += '&event=exclude';
+      return p;
+    }
+    function categoryDrilldownUrl(category, year, month) {
+      let url = './table.html?year=' + year + '&category=' + encodeURIComponent(category);
+      if (month) url += '&month=' + month;
+      url += tableFilterParams_();
+      return url;
+    }
+    function totalDrilldownUrl(year, month) {
+      let url = './table.html?year=' + year;
+      if (month) url += '&month=' + month;
+      url += tableFilterParams_();
+      return url;
+    }
+    function subBreakLine(subcategories) {
+      if (!subcategories || subcategories.length === 0) return '';
+      return '<div class="subBreak">' + subcategories.map((s) => s.subcategory + ' ' + fmtYen(s.amount)).join(' ・ ') + '</div>';
+    }
+    function renderCategoryBars(categories, budgetLabel, year, month) {
+      if (categories.length === 0) return '<div class="empty">記録がありません</div>';
+      let html = '<div class="catBarsTtl">カテゴリ別（実績 / ' + budgetLabel + '）タップで明細へ</div>';
+      categories.forEach((c) => {
+        const href = categoryDrilldownUrl(c.category, year, month);
+        const actual = catActual(c);
+        const pct = catPct(c);
+        if (c.budget === null) {
+          html += '<a class="catBar" href="' + href + '"><div class="head"><span class="name">' + c.category + '</span><span class="amt"><b>' + fmtYen(actual) + '</b> <span class="noBudget">(予算未設定)</span></span></div>' + subBreakLine(c.subcategories) + '</a>';
+        } else {
+          html += '<a class="catBar" href="' + href + '"><div class="head"><span class="name">' + c.category + '</span><span class="amt' + (pct > 100 ? ' over' : '') + '"><b>' + fmtYen(actual) + '</b> / ' + fmtYen(c.budget) + ' (' + pct + '%)</span></div><div class="track"><div class="fill' + (pct > 100 ? ' over' : '') + '" style="width:' + Math.min(pct, 100) + '%"></div></div>' + subBreakLine(c.subcategories) + '</a>';
+        }
+      });
+      return '<div class="catBars">' + html + '</div>';
+    }
+
+    function renderMiniStats(data) {
+      const budgetPct = data.budget['pct' + variantSuffix_()];
+      const settle = settlementFor(data);
+      const pctText = budgetPct === null ? '未設定' : budgetPct + '%';
+      const settleText = settle && (settle.transferAmount > 0) ? settle.transferFrom + 'が' + settle.transferTo + 'へ<br>' + fmtYen(settle.transferAmount) : 'なし';
+      let settleBadge = '';
+      if (data.settlement) {
+        if (data.settlement.confirmed) settleBadge = '<div class="settleBadge confirmed">確定済み</div>';
+        else if (data.settlement.confirmedMonthsCount) settleBadge = '<div class="settleBadge">' + data.settlement.confirmedMonthsCount + '/12ヶ月確定済み</div>';
+        else if (data.settlement.confirmed === false) settleBadge = '<div class="settleBadge">未確定</div>';
+      }
+      const isMonth = !!data.yearMonth;
+      const targetYear = isMonth ? data.yearMonth.slice(0, 4) : data.year;
+      const monthParam = isMonth ? '&month=' + data.yearMonth : '';
+      const budgetUrl = './budget-form.html?year=' + targetYear + monthParam;
+      const settlementUrl = './settlement-form.html?year=' + targetYear + monthParam;
+      return (
+        '<div class="miniStats">' +
+          '<a class="mini" href="' + budgetUrl + '"><div class="k">予算</div><div class="v">' + fmtYen(data.budget.total) + '</div></a>' +
+          '<a class="mini" href="' + budgetUrl + '"><div class="k">消化率</div><div class="v' + (budgetPct > 100 ? ' over' : '') + '">' + pctText + '</div>' +
+            (budgetPct !== null ? '<div class="track"><div class="fill' + (budgetPct > 100 ? ' over' : '') + '" style="width:' + Math.min(budgetPct, 100) + '%"></div></div>' : '') +
+          '</a>' +
+          '<a class="mini settle" href="' + settlementUrl + '"><div class="k">精算(実績)</div><div class="v">' + settleText + '</div>' + settleBadge + '</a>' +
+        '</div>'
+      );
+    }
+
+    function renderYearFrame(data) {
+      lastYearData = data;
+      const el = document.getElementById('yearFrame');
+      el.classList.remove('skel', 'skel-frame');
+      el.innerHTML =
+        '<div class="yearNav"><button class="ghost" id="prevYearBtn" type="button" aria-label="前年">◀</button><span class="label">' + data.year + '年</span><button class="ghost" id="nextYearBtn" type="button" aria-label="翌年">▶</button></div>' +
+        reimbToggleHtml('year') +
+        '<a class="hero" href="' + totalDrilldownUrl(data.year, null) + '"><div class="label">支出合計</div><div class="amt">' + fmtYen(data['spendTotal' + variantSuffix_()]) + '</div></a>' +
+        renderMiniStats(data) +
+        renderCategoryBars(data.categories, '年間予算', data.year, null) +
+        '<div class="catBarsTtl" style="margin-top:16px;">月別推移</div><div id="trendChart" class="trendchart skel"></div><div id="trendSummary" class="trend-summary"></div>' +
+        '<div class="catBarsTtl" style="margin-top:16px;">年別推移（直近5年）</div><div id="multiYearChart" class="trendchart skel"></div><div id="multiYearSummary" class="trend-summary"></div>';
+      if (lastMultiYearData) renderMultiYearTrend(lastMultiYearData);
+      document.getElementById('prevYearBtn').addEventListener('click', () => loadYear(Number(year) - 1));
+      document.getElementById('nextYearBtn').addEventListener('click', () => loadYear(Number(year) + 1));
+      wireReimbToggle('year');
+      syncViewportHeight();
+    }
+
+    const thisYearMonth = new Date().toISOString().slice(0, 7) + '-01';
+
+    function renderTrend(trend) {
+      const chartEl = document.getElementById('trendChart');
+      if (!chartEl) return;
+      chartEl.classList.remove('skel');
+      const max = Math.max.apply(null, trend.series.map((m) => m.amount).concat([1]));
+      chartEl.innerHTML = '';
+      trend.series.forEach((m) => {
+        const isNow = m.yearMonth === thisYearMonth;
+        const h = Math.round((m.amount / max) * 100);
+        const monthLabel = Number(m.yearMonth.slice(5, 7));
+        const col = document.createElement('div');
+        col.className = 'col';
+        col.innerHTML = '<div class="bar' + (isNow ? ' now' : '') + '" style="height:' + h + '%"></div><div class="m">' + monthLabel + '</div>';
+        chartEl.appendChild(col);
+      });
+      document.getElementById('trendSummary').innerHTML = '<span>年間累計 <b>' + fmtYen(trend.total) + '</b></span><span>月平均 <b>' + fmtYen(trend.average) + '</b></span>';
+      syncViewportHeight();
+    }
+
+    function renderMultiYearTrend(result) {
+      lastMultiYearData = result;
+      const chartEl = document.getElementById('multiYearChart');
+      if (!chartEl) return;
+      chartEl.classList.remove('skel');
+      const max = Math.max.apply(null, result.series.map((y) => y.amount).concat([1]));
+      chartEl.innerHTML = '';
+      const thisYearNum = new Date().getFullYear();
+      result.series.forEach((y) => {
+        const h = Math.round((y.amount / max) * 100);
+        const col = document.createElement('div');
+        col.className = 'col';
+        col.innerHTML = '<div class="bar' + (y.year === thisYearNum ? ' now' : '') + '" style="height:' + h + '%"></div><div class="m">' + y.year + '</div>';
+        chartEl.appendChild(col);
+      });
+      const completedYears = result.series.filter((y) => y.year !== thisYearNum);
+      const thisYearRow = result.series.find((y) => y.year === thisYearNum);
+      const summaryEl = document.getElementById('multiYearSummary');
+      if (summaryEl) {
+        let html = '';
+        if (completedYears.length > 0) {
+          const avg = Math.round(completedYears.reduce((sum, y) => sum + y.amount, 0) / completedYears.length);
+          html += '<span>年平均（確定分） <b>' + fmtYen(avg) + '</b></span>';
+        }
+        if (thisYearRow) html += '<span>今年（進行中） <b>' + fmtYen(thisYearRow.amount) + '</b></span>';
+        summaryEl.innerHTML = html;
+      }
+      syncViewportHeight();
+    }
+
+    async function loadMultiYearTrend() {
+      const cacheKey = 'kakeibo_home_multiyear';
+      const cached = cacheGet(cacheKey);
+      if (cached) renderMultiYearTrend(cached);
+      try {
+        const result = await window.kakeiboData.getMultiYearTrend();
+        cacheSet(cacheKey, result);
+        renderMultiYearTrend(result);
+      } catch (err) {
+        console.error('複数年推移取得エラー: ' + err.message);
+      }
+    }
+
+    function renderMonthFrame(data) {
+      lastMonthData = data;
+      renderBudgetOverBanner(data);
+      const el = document.getElementById('monthFrame');
+      el.classList.remove('skel', 'skel-frame');
+      const monthNum = Number(data.yearMonth.slice(5, 7));
+      const yearNum = data.yearMonth.slice(0, 4);
+      el.innerHTML =
+        '<div class="yearNav"><button class="ghost" id="prevMonthBtn" type="button" aria-label="前月">◀</button><span class="label">' + yearNum + '年' + monthNum + '月</span><button class="ghost" id="nextMonthBtn" type="button" aria-label="翌月">▶</button></div>' +
+        reimbToggleHtml('month') +
+        '<a class="hero" href="' + totalDrilldownUrl(yearNum, data.yearMonth) + '"><div class="label">支出合計</div><div class="amt">' + fmtYen(data['spendTotal' + variantSuffix_()]) + '</div></a>' +
+        renderMiniStats(data) +
+        renderPaceBox(data) +
+        renderCategoryBars(data.categories, '月間予算', yearNum, data.yearMonth);
+      document.getElementById('prevMonthBtn').addEventListener('click', () => shiftMonth(-1));
+      document.getElementById('nextMonthBtn').addEventListener('click', () => shiftMonth(1));
+      wireReimbToggle('month');
+      syncViewportHeight();
+    }
+
+    const pagerViewport = document.getElementById('pagerViewport');
+    const pagerTrack = document.getElementById('pagerTrack');
+    const pagerDots = document.querySelectorAll('.dots span');
+    const tabYearBtn = document.getElementById('tabYear');
+    const tabMonthBtn = document.getElementById('tabMonth');
+    let pagerPage = 0;
+    let pagerWidth = pagerViewport.offsetWidth;
+
+    function syncViewportHeight() {
+      const pages = pagerTrack.querySelectorAll('.pagerPage');
+      const activeEl = pages[pagerPage];
+      if (activeEl) pagerViewport.style.height = activeEl.offsetHeight + 'px';
+    }
+    function goToPage(p) {
+      pagerPage = Math.max(0, Math.min(1, p));
+      pagerTrack.style.transform = 'translateX(-' + (pagerPage * pagerWidth) + 'px)';
+      pagerDots.forEach((d, i) => d.classList.toggle('active', i === pagerPage));
+      tabYearBtn.classList.toggle('active', pagerPage === 0);
+      tabMonthBtn.classList.toggle('active', pagerPage === 1);
+      syncViewportHeight();
+    }
+    tabYearBtn.addEventListener('click', () => goToPage(0));
+    tabMonthBtn.addEventListener('click', () => goToPage(1));
+    pagerDots.forEach((d, i) => d.addEventListener('click', () => goToPage(i)));
+
+    let pagerDragging = false, pagerStartX = 0, pagerCurrentX = 0;
+    function pagerDragStart(x) { pagerDragging = true; pagerStartX = x; pagerCurrentX = x; pagerTrack.classList.add('dragging'); }
+    function pagerDragMove(x) {
+      if (!pagerDragging) return;
+      pagerCurrentX = x;
+      const delta = pagerCurrentX - pagerStartX;
+      pagerTrack.style.transform = 'translateX(' + (-(pagerPage * pagerWidth) + delta) + 'px)';
+    }
+    function pagerDragEnd() {
+      if (!pagerDragging) return;
+      pagerDragging = false;
+      pagerTrack.classList.remove('dragging');
+      const delta = pagerCurrentX - pagerStartX;
+      if (Math.abs(delta) > pagerWidth * 0.2) goToPage(delta < 0 ? pagerPage + 1 : pagerPage - 1);
+      else goToPage(pagerPage);
+    }
+    pagerViewport.addEventListener('touchstart', (e) => pagerDragStart(e.touches[0].clientX), { passive: true });
+    pagerViewport.addEventListener('touchmove', (e) => pagerDragMove(e.touches[0].clientX), { passive: true });
+    pagerViewport.addEventListener('touchend', pagerDragEnd);
+    window.addEventListener('resize', () => { pagerWidth = pagerViewport.offsetWidth; goToPage(pagerPage); });
+
+    function cacheGet(key) { try { return JSON.parse(sessionStorage.getItem(key)); } catch (e) { return null; } }
+    function cacheSet(key, data) { try { sessionStorage.setItem(key, JSON.stringify(data)); } catch (e) {} }
+
+    async function loadYear(y) {
+      year = String(y);
+      const cacheKey = 'kakeibo_home_year_' + year;
+      const cached = cacheGet(cacheKey);
+      if (cached) { renderYearFrame(cached); renderTrend(cached.trend); }
+      else { document.getElementById('yearFrame').classList.add('skel', 'skel-frame'); }
+      try {
+        const data = await window.kakeiboData.getHomeYearOverview(y);
+        cacheSet(cacheKey, data);
+        renderYearFrame(data);
+        renderTrend(data.trend);
+      } catch (err) {
+        if (!cached) document.body.insertAdjacentHTML('afterbegin', '<div style="color:var(--danger);">読み込みエラー: ' + err.message + '</div>');
+      }
+    }
+
+    async function loadMonth(ym) {
+      yearMonth = ym;
+      const cacheKey = 'kakeibo_home_month_' + ym;
+      const cached = cacheGet(cacheKey);
+      if (cached) { renderMonthFrame(cached); }
+      else { document.getElementById('monthFrame').classList.add('skel', 'skel-frame'); }
+      try {
+        const data = await window.kakeiboData.getHomeMonthOverview(ym);
+        cacheSet(cacheKey, data);
+        yearMonth = data.yearMonth;
+        renderMonthFrame(data);
+      } catch (err) {
+        if (!cached) document.body.insertAdjacentHTML('afterbegin', '<div style="color:var(--danger);">読み込みエラー: ' + err.message + '</div>');
+      }
+    }
+
+    function shiftMonth(diff) {
+      const parts = yearMonth.split('-');
+      let y = Number(parts[0]);
+      let m = Number(parts[1]) + diff;
+      if (m < 1) { m = 12; y -= 1; }
+      if (m > 12) { m = 1; y += 1; }
+      loadMonth(y + '-' + String(m).padStart(2, '0') + '-01');
+    }
+
+    const AUTO_IMPORT_LAST_SEEN_KEY = 'kakeibo_auto_import_last_seen';
+    const SOURCE_LABELS = { gmail_auto: 'カード自動', recurring_auto: '定期収支' };
+
+    function renderAutoImportBanner(result) {
+      const banner = document.getElementById('autoImportBanner');
+      if (!result || result.count === 0) { banner.style.display = 'none'; return; }
+      const shown = result.items.slice(0, 5);
+      const moreCount = result.count - shown.length;
+      const itemsHtml = shown.map((r) => {
+        const md = Number(r.occurred_at.slice(5, 7)) + '/' + Number(r.occurred_at.slice(8, 10));
+        return '<div>・' + md + ' ' + (r.name || r.category) + ' ' + fmtYen(r.amount) + '（' + (SOURCE_LABELS[r.source_channel] || '') + '）</div>';
+      }).join('') + (moreCount > 0 ? '<div>他' + moreCount + '件</div>' : '');
+      banner.innerHTML =
+        '<div class="ttl">🔔前回確認時から自動計上で' + result.count + '件・' + fmtYen(result.total) + 'を記録しました</div>' +
+        '<div class="items">' + itemsHtml + '</div>' +
+        '<a class="link" href="./history.html">履歴で確認する ›</a>';
+      banner.style.display = 'block';
+    }
+
+    async function loadHomeBanners() {
+      const cacheKey = 'kakeibo_home_unclassified';
+      const cached = cacheGet(cacheKey);
+      if (cached) renderUnclassifiedBanner(cached);
+      let since;
+      try { since = localStorage.getItem(AUTO_IMPORT_LAST_SEEN_KEY); } catch (e) { since = null; }
+      if (!since) since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      try {
+        const result = await window.kakeiboData.getHomeBanners(since);
+        cacheSet(cacheKey, result.unclassified);
+        renderUnclassifiedBanner(result.unclassified);
+        renderAutoImportBanner(result.autoImports);
+        renderSettlementBanner(result.unconfirmedSettlement);
+        try { localStorage.setItem(AUTO_IMPORT_LAST_SEEN_KEY, result.autoImports.count > 0 ? result.autoImports.latestCreatedAt : new Date().toISOString()); } catch (e) {}
+      } catch (err) {
+        console.error('バナー取得エラー: ' + err.message);
+      }
+    }
+
+    function renderUnclassifiedBanner(result) {
+      const banner = document.getElementById('unclassifiedBanner');
+      if (!result || result.count === 0) { banner.style.display = 'none'; return; }
+      const url = './table.html?year=' + result.earliestYear + '&category=' + encodeURIComponent('未分類');
+      const link = document.getElementById('unclassifiedLink');
+      link.href = url;
+      link.textContent = '⚠ 未分類の取引が' + result.count + '件あります。確認する ›';
+      banner.style.display = 'block';
+    }
+
+    function renderSettlementBanner(result) {
+      const banner = document.getElementById('settlementBanner');
+      if (!result) { banner.style.display = 'none'; return; }
+      const [y, m] = result.yearMonth.split('-');
+      const link = document.getElementById('settlementBannerLink');
+      link.href = './settlement-form.html';
+      link.textContent = '📌 ' + Number(m) + '月分（' + fmtYen(result.totalSharedAmount) + '）の精算がまだ確定していません。確認する ›';
+      banner.style.display = 'block';
+    }
+
+    function renderPaceBox(data) {
+      if (data.yearMonth !== TODAY_YEAR_MONTH || !data.budget || data.budget.total <= 0) return '';
+      const pct = data.budget.pct;
+      const dayOfMonth = new Date().getDate();
+      const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+      const elapsedPct = Math.round((dayOfMonth / daysInMonth) * 100);
+      const diff = pct - elapsedPct;
+      let cls = 'neutral', msg = 'ほぼペース通りです';
+      if (diff >= 10) { cls = 'warn'; msg = '経過日数のペースより+' + diff + 'pt多く使っています'; }
+      else if (diff <= -10) { cls = 'good'; msg = '経過日数のペースより' + Math.abs(diff) + 'pt余裕があります'; }
+      return '<div class="paceBox ' + cls + '">' + dayOfMonth + '日目/' + daysInMonth + '日中（' + elapsedPct + '%経過）・' + msg + '</div>';
+    }
+
+    function renderBudgetOverBanner(data) {
+      const banner = document.getElementById('budgetOverBanner');
+      const pct = data.budget && data.budget.total > 0 ? data.budget.pct : 0;
+      if (data.yearMonth !== TODAY_YEAR_MONTH || pct <= 100) { banner.style.display = 'none'; return; }
+      const link = document.getElementById('budgetOverBannerLink');
+      link.href = './budget-form.html';
+      link.textContent = '⚠ 今月の予算を' + (pct - 100) + '%超過しています（' + fmtYen(data.budget.actual) + ' / ' + fmtYen(data.budget.total) + '）。確認する ›';
+      banner.style.display = 'block';
+    }
+
+    function initHome() {
+      loadYear(year);
+      loadMonth(yearMonth);
+      loadHomeBanners();
+      loadMultiYearTrend();
+    }
+
+    window.kakeiboReady.then((ok) => {
+      if (!ok) { document.body.insertAdjacentHTML('afterbegin', '<div style="color:var(--danger);">ログインできませんでした。LINEアプリから開き直してください。</div>'); return; }
+      initHome();
+    });
+  </script>
+</body>
+</html>
