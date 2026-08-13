@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>精算</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-Ae2dYXxD';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --success-bg: #E4F7EC;
+      --warn-bg: #FCEFE4; --warn-border: #E8C39E; --warn-ink: #A85C1C;
+      --switch-bg: #F2FBF6; --switch-border: #B9EBCD; --switch-ink: #5B9E78;
+      --amber-bg: #FFF9EC; --amber-border: #F0DBA0; --amber-ink: #7A5B12; --amber-ink2: #9C8449;
+      --label-muted: #4A5A4E;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --success-bg: #163627;
+        --warn-bg: #2E2114; --warn-border: #4A3420; --warn-ink: #E3A15C;
+        --switch-bg: #14231A; --switch-border: #2B4A38; --switch-ink: #6FCF9A;
+        --amber-bg: #2E2712; --amber-border: #5A4A20; --amber-ink: #E0B85C; --amber-ink2: #B89A5E;
+        --label-muted: #9AA6A0;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    input[type=range] { width: 100%; margin-top: 8px; }
+    button { width: 100%; padding: 12px; margin-top: 16px; font-size: 16px; background: var(--accent); color: white; border: none; border-radius: 6px; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); width: auto; padding: 6px 16px; margin-top: 0; }
+    .yearNav { display: flex; align-items: center; justify-content: space-between; }
+    .yearNav .yearLabel { font-size: 18px; font-weight: bold; }
+    .card { background: var(--accent-soft); border-radius: 10px; padding: 12px; margin-top: 12px; }
+    .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .row:last-child { border-bottom: none; }
+    .result { background: var(--success-bg); color: var(--accent-ink); border-radius: 10px; padding: 16px; text-align: center; margin-top: 12px; }
+    .result .amt { font-size: 22px; font-weight: bold; }
+    .compare { display: flex; gap: 8px; margin-top: 10px; }
+    .compare .box { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px; text-align: center; }
+    .compare .box .label { font-size: 11px; color: var(--faint); }
+    .compare .box .val { font-size: 15px; font-weight: bold; }
+    #status { margin-top: 12px; text-align: center; }
+    #status.ok { color: var(--accent-ink); font-weight: bold; }
+    #status.err { color: var(--danger); font-weight: bold; }
+    .monthItem { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .monthItem.active { background: var(--accent-soft2); }
+    .monthItem .m { font-weight: bold; width: 44px; }
+    .monthItem .mid { flex: 1; font-size: 12px; color: var(--muted); }
+    .monthItem .amt { font-weight: bold; font-size: 14px; }
+    .monthItem .amt.none { color: var(--faint); font-weight: normal; }
+    .monthItem .lockBadge { font-size: 11px; font-weight: bold; color: var(--accent-ink); background: var(--success-bg); border-radius: 100px; padding: 1px 7px; margin-right: 6px; }
+    .confirmBanner { background: var(--accent-soft); border-radius: 10px; padding: 12px; margin-top: 20px; font-size: 13px; color: var(--ink); }
+    .confirmBanner .when { font-size: 11px; color: var(--faint); margin-top: 4px; }
+    #monthDetail { display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 6px; }
+    @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    .skel-card { height: 100px; }
+    .skel-month { height: 40px; margin-bottom: 6px; border-radius: 8px; }
+    #yearRatioSection.skel-hidden { opacity: 0.35; pointer-events: none; }
+    a.backLink { display: inline-block; margin-bottom: 12px; font-size: 12px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .ratioPeriod { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .ratioPeriod:last-child { border-bottom: none; }
+    .ratioPeriod .range { color: var(--muted); }
+    .ratioPeriod .ratioVal { font-weight: bold; }
+    .ratioPeriod.current .ratioVal { color: var(--accent-ink); }
+    .ratioPeriod .tag { font-size: 10px; font-weight: bold; padding: 1px 7px; border-radius: 100px; margin-left: 6px; }
+    .ratioPeriod .tag.current { background: var(--success-bg); color: var(--accent-ink); }
+    .ratioPeriod .tag.future { background: var(--warn-bg); color: var(--warn-ink); }
+    .switchCompare { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; background: var(--switch-bg); border: 1px solid var(--switch-border); border-radius: 10px; padding: 4px; }
+    .switchCompare .opt { flex: 1; text-align: center; font-size: 11px; font-weight: bold; padding: 6px 4px; border-radius: 8px; color: var(--switch-ink); }
+    .switchCompare .opt.on { background: var(--accent); color: #fff; }
+    .switchNote { font-size: 10.5px; color: var(--faint); text-align: center; margin-top: 6px; }
+    .incomeCalc { background: var(--accent-soft2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+    .incomeCalc .incomeCalcHead { font-size: 13.5px; font-weight: bold; color: var(--ink); }
+    .incomeCalc .incomeCalcNote { font-size: 11px; color: var(--faint); margin-top: 2px; }
+    .incomeCalc .fldRow { display: flex; gap: 8px; }
+    .incomeCalc .fld { flex: 1; }
+    .incomeCalc .fld label { font-size: 11px; margin-top: 8px; color: var(--label-muted); }
+    .incomeCalc .fld input { width: 100%; padding: 8px; margin-top: 3px; box-sizing: border-box; font-size: 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--ink); }
+    .incomeCalc button { margin-top: 10px; }
+    .incomeResult { background: var(--accent-soft); border-radius: 10px; padding: 10px 12px; margin-top: 12px; }
+    .incomeResult .personCols { display: flex; gap: 8px; }
+    .incomeResult .personCol { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+    .incomeResult .personCol .nm { font-size: 11px; font-weight: bold; color: var(--ink); margin-bottom: 4px; }
+    .incomeResult .personCol .prow { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); padding: 1px 0; }
+    .incomeResult .personCol .prow.final { font-weight: bold; color: var(--ink); border-top: 1px solid var(--border); margin-top: 3px; padding-top: 4px; }
+    .incomeRatioResult { background: var(--success-bg); color: var(--accent-ink); border-radius: 10px; padding: 12px; text-align: center; margin-top: 10px; }
+    .incomeRatioResult .big { font-size: 18px; font-weight: bold; margin-top: 2px; }
+    .incomeRatioResult .sub { font-size: 10.5px; opacity: .85; margin-top: 4px; }
+    .incomeDisclaimer { font-size: 10px; color: var(--warn-ink); background: var(--warn-bg); border-radius: 6px; padding: 7px 9px; margin-top: 10px; line-height: 1.5; }
+    .disposableCard { background: var(--amber-bg); border: 1.5px solid var(--amber-border); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+    .disposableCard .dHead { font-size: 12.5px; font-weight: bold; color: var(--amber-ink); }
+    .disposableCard .dNote { font-size: 10.5px; color: var(--amber-ink2); margin-top: 2px; }
+    .disposableRow { display: flex; gap: 8px; margin-top: 10px; }
+    .disposableRow .pbox { flex: 1; background: var(--panel); border: 1px solid var(--amber-border); border-radius: 8px; padding: 9px 10px; }
+    .disposableRow .pbox .nm { font-size: 11px; font-weight: bold; color: var(--ink); }
+    .disposableRow .pbox .calcLine { font-size: 10px; color: var(--faint); margin-top: 4px; }
+    .disposableRow .pbox .remain { font-size: 15px; font-weight: bold; color: var(--amber-ink); margin-top: 3px; }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./home.html">← ホームに戻る</a>
+  <h2>精算</h2>
+
+  <div class="yearNav">
+    <button class="ghost" id="prevYearBtn" type="button" aria-label="前年">◀</button>
+    <div class="yearLabel" id="yearLabel"></div>
+    <button class="ghost" id="nextYearBtn" type="button" aria-label="翌年">▶</button>
+  </div>
+
+  <div class="card skel skel-card" id="yearSummaryCard"></div>
+
+  <div id="yearRatioSection" class="skel-hidden">
+    <h3 style="margin-top:20px;">年間の基準比率を変更する</h3>
+    <p style="font-size:12px; color:var(--faint); margin-top:-8px;">この年の1月1日から適用する基準比率です（次に変更するまで継続して適用されます）。特定の月だけ変えたい場合は、下の月一覧から対象月を開いて変更してください。</p>
+
+    <div class="incomeCalc">
+      <div class="incomeCalcHead">💰 年収から比率を計算する（概算）</div>
+      <div class="incomeCalcNote">2人の年収を入力すると、可処分所得の比率をもとに精算比率の目安を計算します（下のスライダーとは別の、比率を決めるための補助ツールです）</div>
+      <div class="fldRow">
+        <div class="fld"><label>一の年収（額面・円）</label><input type="number" id="incomeKazuichi" placeholder="例：6000000" /></div>
+        <div class="fld"><label>成美の年収（額面・円）</label><input type="number" id="incomeNarumi" placeholder="例：4500000" /></div>
+      </div>
+      <button type="button" class="ghost" id="calcIncomeBtn">計算する</button>
+      <div class="incomeResult" id="incomeResult" style="display:none;"></div>
+    </div>
+
+    <div>一 <span id="yearRatioKazuichiLabel"></span>% ／ 成美 <span id="yearRatioNarumiLabel"></span>%</div>
+    <input type="range" id="yearRatioSlider" min="0" max="100" step="5" />
+    <div class="compare" id="yearCompareBox"></div>
+
+    <div class="disposableCard" id="disposableCard" style="display:none;">
+      <div class="dHead">🏦 残る可処分所得（このスライダー比率で試算）</div>
+      <div class="dNote">年収入力済みの場合のみ表示。スライダーを動かすたびに再計算されます</div>
+      <div class="disposableRow" id="disposableRow"></div>
+    </div>
+
+    <button id="saveYearRatioBtn">この比率を年間の基準として保存</button>
+  </div>
+
+  <h3 style="margin-top:20px;">比率変更履歴</h3>
+  <p style="font-size:12px; color:var(--faint); margin-top:-8px;">登録されている比率変更を、適用期間ごとにまとめて表示します。意図しない古い設定や、予約したまま忘れている将来分が無いか確認できます。</p>
+  <div id="ratioHistory">
+    <div class="skel skel-month"></div>
+  </div>
+
+  <h3 style="margin-top:20px;">月ごとの内訳（タップで詳細・比率変更）</h3>
+  <div id="monthList">
+    <div class="skel skel-month"></div><div class="skel skel-month"></div><div class="skel skel-month"></div>
+  </div>
+
+  <div id="monthDetail">
+    <h3 id="monthDetailTitle"></h3>
+    <div class="card" id="summaryCard"></div>
+
+    <h3>精算結果</h3>
+    <div id="resultToggle"></div>
+    <div class="result" id="resultCard"></div>
+    <div class="switchNote" id="resultToggleNote" style="display:none;">⚠ 比較専用の表示です。「確定する」は常に反映後・イベント込みの実額で行われます</div>
+
+    <div class="confirmBanner" id="confirmBanner" style="display:none;"></div>
+    <button id="confirmBtn" type="button">この月の精算を確定する</button>
+    <button class="ghost" id="unconfirmBtn" type="button" style="display:none;">確定を解除する</button>
+
+    <div id="ratioSection">
+      <hr style="margin-top:20px;" />
+      <h3>比率を変更する</h3>
+      <div>一 <span id="ratioKazuichiLabel"></span>% ／ 成美 <span id="ratioNarumiLabel"></span>%</div>
+      <input type="range" id="ratioSlider" min="0" max="100" step="5" />
+      <div class="compare" id="compareBox"></div>
+      <button id="saveRatioBtn">この比率で保存</button>
+    </div>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    let year = qs.get('year') || String(new Date().getFullYear());
+    const initialOpenMonth = qs.get('month') || '';
+    let yearlyData = null;
+    let selectedYearMonth = null;
+    let currentMonthSummary = null;
+
+    function cacheGet(key) { try { return JSON.parse(sessionStorage.getItem(key)); } catch (e) { return null; } }
+    function cacheSet(key, data) { try { sessionStorage.setItem(key, JSON.stringify(data)); } catch (e) {} }
+
+    let showGross = false;
+    let showExclEvent = false;
+
+    function variantSuffix_() { return (showGross ? 'Gross' : '') + (showExclEvent ? 'ExclEvent' : ''); }
+    function pickVariant_(obj, netFrom, netTo, netAmount) {
+      const suf = variantSuffix_();
+      if (suf === '') return { transferFrom: netFrom, transferTo: netTo, transferAmount: netAmount };
+      const key = suf.charAt(0).toLowerCase() + suf.slice(1);
+      return obj[key];
+    }
+    function reimbToggleHtml(idSuffix) {
+      return (
+        '<div class="switchCompare" id="reimbToggle-' + idSuffix + '">' +
+          '<span class="opt' + (!showGross ? ' on' : '') + '" data-mode="net">補助・還付を含む</span>' +
+          '<span class="opt' + (showGross ? ' on' : '') + '" data-mode="gross">補助・還付を除く</span>' +
+        '</div>' +
+        '<div class="switchCompare" id="eventToggle-' + idSuffix + '">' +
+          '<span class="opt' + (!showExclEvent ? ' on' : '') + '" data-mode="incl">イベントを含む</span>' +
+          '<span class="opt' + (showExclEvent ? ' on' : '') + '" data-mode="excl">イベントを除く</span>' +
+        '</div>'
+      );
+    }
+    function wireReimbToggle(idSuffix, onChange) {
+      const reimbEl = document.getElementById('reimbToggle-' + idSuffix);
+      if (reimbEl) {
+        reimbEl.querySelectorAll('.opt').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const wantsGross = btn.dataset.mode === 'gross';
+            if (wantsGross === showGross) return;
+            showGross = wantsGross;
+            onChange();
+          });
+        });
+      }
+      const eventEl = document.getElementById('eventToggle-' + idSuffix);
+      if (eventEl) {
+        eventEl.querySelectorAll('.opt').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const wantsExcl = btn.dataset.mode === 'excl';
+            if (wantsExcl === showExclEvent) return;
+            showExclEvent = wantsExcl;
+            onChange();
+          });
+        });
+      }
+    }
+
+    const slider = document.getElementById('ratioSlider');
+    const monthDetail = document.getElementById('monthDetail');
+    const yearSlider = document.getElementById('yearRatioSlider');
+
+    function fmtYen(n) {
+      const v = Number(n || 0);
+      return (v < 0 ? '-¥' : '¥') + Math.abs(v).toLocaleString();
+    }
+    function setStatus(text, kind) {
+      const el = document.getElementById('status');
+      el.textContent = text;
+      el.classList.remove('ok', 'err');
+      if (kind) el.classList.add(kind);
+    }
+
+    function renderYearSummary() {
+      document.getElementById('yearLabel').textContent = yearlyData.year + '年';
+      const card = document.getElementById('yearSummaryCard');
+      card.classList.remove('skel', 'skel-card');
+      document.getElementById('yearRatioSection').classList.remove('skel-hidden');
+      const picked = pickVariant_(yearlyData, yearlyData.netTransferFrom, yearlyData.netTransferTo, yearlyData.netTransferAmount);
+      const transferFrom = picked.transferFrom, transferTo = picked.transferTo, transferAmount = picked.transferAmount;
+      card.innerHTML =
+        reimbToggleHtml('year') +
+        '<div class="row"><span>年間の共用支出合計</span><span>' + fmtYen(yearlyData.totalSharedAmount) + '</span></div>' +
+        '<div class="row"><span>一の支払い合計</span><span>' + fmtYen(yearlyData.paidKazuichi) + '</span></div>' +
+        '<div class="row"><span>成美の支払い合計</span><span>' + fmtYen(yearlyData.paidNarumi) + '</span></div>' +
+        (transferAmount > 0
+          ? '<div class="row"><span>年間の精算純額</span><span>' + transferFrom + 'が' + transferTo + 'へ ' + fmtYen(transferAmount) + '</span></div>'
+          : '<div class="row"><span>年間の精算純額</span><span>なし</span></div>');
+      wireReimbToggle('year', () => renderYearSummary());
+    }
+
+    function calculateYearlyNetLocal(months, ratioKazuichi) {
+      let netDiff = 0;
+      months.forEach((m) => {
+        const sharedFairShareKazuichi = Math.round(m.totalSharedAmount * ratioKazuichi);
+        const fairShareKazuichi = sharedFairShareKazuichi + (m.owedByKazuichi || 0);
+        netDiff += (m.paidKazuichi - fairShareKazuichi);
+      });
+      return netDiff;
+    }
+    function calculateYearlyFairShareLocal(months, ratioKazuichi) {
+      let fairKazuichi = 0, fairNarumi = 0;
+      months.forEach((m) => {
+        const sharedFairKazuichi = Math.round(m.totalSharedAmount * ratioKazuichi);
+        const sharedFairNarumi = m.totalSharedAmount - sharedFairKazuichi;
+        fairKazuichi += sharedFairKazuichi + (m.owedByKazuichi || 0);
+        fairNarumi += sharedFairNarumi + (m.owedByNarumi || 0);
+      });
+      return { fairShareKazuichi: fairKazuichi, fairShareNarumi: fairNarumi };
+    }
+
+    let incomeCalculated = false;
+    let lastDisposableKazuichi = 0;
+    let lastDisposableNarumi = 0;
+
+    function renderDisposableCard() {
+      const card = document.getElementById('disposableCard');
+      if (!incomeCalculated || !yearlyData) { card.style.display = 'none'; return; }
+      card.style.display = 'block';
+      const ratioKazuichi = Number(yearSlider.value) / 100;
+      const fair = calculateYearlyFairShareLocal(yearlyData.months, ratioKazuichi);
+      const remainKazuichi = lastDisposableKazuichi - fair.fairShareKazuichi;
+      const remainNarumi = lastDisposableNarumi - fair.fairShareNarumi;
+      document.getElementById('disposableRow').innerHTML =
+        '<div class="pbox"><div class="nm">一</div><div class="calcLine">' + fmtYen(lastDisposableKazuichi) + ' − 年間負担' + fmtYen(fair.fairShareKazuichi) + '</div><div class="remain">残り ' + fmtYen(remainKazuichi) + '</div></div>' +
+        '<div class="pbox"><div class="nm">成美</div><div class="calcLine">' + fmtYen(lastDisposableNarumi) + ' − 年間負担' + fmtYen(fair.fairShareNarumi) + '</div><div class="remain">残り ' + fmtYen(remainNarumi) + '</div></div>';
+    }
+
+    function updateYearRatioLabels() {
+      const k = Number(yearSlider.value);
+      document.getElementById('yearRatioKazuichiLabel').textContent = k;
+      document.getElementById('yearRatioNarumiLabel').textContent = 100 - k;
+    }
+    function previewYearRatio() {
+      const curRatio = yearlyData.ratioKazuichiAtYearStart;
+      const newRatio = Number(yearSlider.value) / 100;
+      const curNet = calculateYearlyNetLocal(yearlyData.months, curRatio);
+      const newNet = calculateYearlyNetLocal(yearlyData.months, newRatio);
+      const box = document.getElementById('yearCompareBox');
+      const fmt = (net, ratio) => {
+        const from = net >= 0 ? '成美' : '一', to = net >= 0 ? '一' : '成美';
+        return { label: '一' + Math.round(ratio * 100) + '%:成美' + Math.round((1 - ratio) * 100) + '%', text: Math.abs(Math.round(net)) > 0 ? (from + 'が' + to + 'へ ' + fmtYen(Math.abs(net))) : 'なし' };
+      };
+      const cur = fmt(curNet, curRatio), upd = fmt(newNet, newRatio);
+      box.innerHTML =
+        '<div class="box"><div class="label">現在（' + cur.label + '）</div><div class="val">' + cur.text + '</div></div>' +
+        '<div class="box"><div class="label">変更後（' + upd.label + '）</div><div class="val">' + upd.text + '</div></div>';
+      renderDisposableCard();
+    }
+    function initYearSlider() {
+      yearSlider.value = Math.round(yearlyData.ratioKazuichiAtYearStart * 100);
+      updateYearRatioLabels();
+      previewYearRatio();
+    }
+    yearSlider.addEventListener('input', () => { updateYearRatioLabels(); previewYearRatio(); });
+
+    function salaryDeduction_(income) {
+      if (income <= 1800000) return 550000;
+      if (income <= 3600000) return income * 0.3 + 80000;
+      if (income <= 6600000) return income * 0.2 + 440000;
+      if (income <= 8500000) return income * 0.1 + 1100000;
+      return 1950000;
+    }
+    function incomeTax_(taxableIncome) {
+      const t = Math.max(0, taxableIncome);
+      if (t <= 1950000) return t * 0.05;
+      if (t <= 3300000) return t * 0.10 - 97500;
+      if (t <= 6950000) return t * 0.20 - 427500;
+      if (t <= 9000000) return t * 0.23 - 636000;
+      if (t <= 18000000) return t * 0.33 - 1536000;
+      if (t <= 40000000) return t * 0.40 - 2796000;
+      return t * 0.45 - 4796000;
+    }
+    function estimateDisposableIncome_(grossIncome) {
+      const income = Math.max(0, Number(grossIncome) || 0);
+      const deduction = salaryDeduction_(income);
+      const salaryIncome = Math.max(0, income - deduction);
+      const socialInsurance = Math.round(income * 0.15);
+      const basicDeduction = 480000;
+      const taxableIncome = Math.max(0, salaryIncome - socialInsurance - basicDeduction);
+      const incomeTax = Math.round(incomeTax_(taxableIncome));
+      const residentTax = Math.round(taxableIncome * 0.10);
+      const disposable = income - socialInsurance - incomeTax - residentTax;
+      return { income, deduction: Math.round(deduction), socialInsurance, incomeTax, residentTax, disposable: Math.round(disposable) };
+    }
+    function renderPersonCol_(label, r) {
+      return (
+        '<div class="personCol"><div class="nm">' + label + '</div>' +
+          '<div class="prow"><span>給与所得控除</span><span>-' + fmtYen(r.deduction) + '</span></div>' +
+          '<div class="prow"><span>社会保険料</span><span>-' + fmtYen(r.socialInsurance) + '</span></div>' +
+          '<div class="prow"><span>所得税</span><span>-' + fmtYen(r.incomeTax) + '</span></div>' +
+          '<div class="prow"><span>住民税</span><span>-' + fmtYen(r.residentTax) + '</span></div>' +
+          '<div class="prow final"><span>可処分所得</span><span>' + fmtYen(r.disposable) + '</span></div></div>'
+      );
+    }
+    let lastCalculatedRatioKazuichi = null;
+    document.getElementById('calcIncomeBtn').addEventListener('click', () => {
+      const incomeK = Number(document.getElementById('incomeKazuichi').value || 0);
+      const incomeN = Number(document.getElementById('incomeNarumi').value || 0);
+      if (incomeK <= 0 || incomeN <= 0) { setStatus('両方の年収を入力してください', 'err'); return; }
+      const rK = estimateDisposableIncome_(incomeK), rN = estimateDisposableIncome_(incomeN);
+      const total = rK.disposable + rN.disposable;
+      const pctK = total > 0 ? Math.round((rK.disposable / total) * 100) : 50;
+      lastCalculatedRatioKazuichi = pctK;
+      incomeCalculated = true;
+      lastDisposableKazuichi = rK.disposable;
+      lastDisposableNarumi = rN.disposable;
+      renderDisposableCard();
+      const currentPct = Number(yearSlider.value);
+      document.getElementById('incomeResult').style.display = 'block';
+      document.getElementById('incomeResult').innerHTML =
+        '<div class="personCols">' + renderPersonCol_('一', rK) + renderPersonCol_('成美', rN) + '</div>' +
+        '<div class="incomeRatioResult"><div>可処分所得に比例した比率</div><div class="big">一 ' + pctK + '%　:　成美 ' + (100 - pctK) + '%</div>' +
+        '<div class="sub">' + (pctK === currentPct ? '現在のスライダーと同じ比率です' : '現在の設定（一' + currentPct + '%：成美' + (100 - currentPct) + '%）から変わります') + '</div></div>' +
+        '<button type="button" class="ghost" id="applyIncomeRatioBtn" style="margin-top:8px;">この比率をスライダーに反映</button>' +
+        '<div class="incomeDisclaimer">⚠ 概算です。実際の手取り額は扶養控除・保険の種類・各種控除などにより異なります。あくまで比率を決める際の参考値としてご利用ください。</div>';
+      document.getElementById('applyIncomeRatioBtn').addEventListener('click', () => {
+        yearSlider.value = lastCalculatedRatioKazuichi;
+        updateYearRatioLabels();
+        previewYearRatio();
+      });
+    });
+
+    document.getElementById('saveYearRatioBtn').addEventListener('click', async () => {
+      const newRatioKazuichi = Number(yearSlider.value) / 100;
+      setStatus('保存中...', null);
+      try {
+        await window.kakeiboData.saveNewYearRatio(year, newRatioKazuichi);
+        loadRatioHistory();
+        loadYear(Number(year), () => { setStatus('✓ 保存しました', 'ok'); });
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    });
+
+    function renderMonthList() {
+      const listEl = document.getElementById('monthList');
+      listEl.innerHTML = '';
+      yearlyData.months.forEach((m) => {
+        const monthNum = Number(m.yearMonth.slice(5, 7));
+        const row = document.createElement('div');
+        row.className = 'monthItem' + (m.yearMonth === selectedYearMonth ? ' active' : '');
+        const amtHtml = m.transferAmount > 0
+          ? '<span class="amt">' + m.transferFrom + 'が' + m.transferTo + 'へ ' + fmtYen(m.transferAmount) + '</span>'
+          : '<span class="amt none">' + (m.totalSharedAmount > 0 ? '精算なし' : '記録なし') + '</span>';
+        const lockHtml = m.confirmed ? '<span class="lockBadge">確定済</span>' : '';
+        row.innerHTML = '<span class="m">' + monthNum + '月</span><span class="mid">支出' + fmtYen(m.totalSharedAmount) + '</span>' + lockHtml + amtHtml;
+        row.addEventListener('click', () => openMonth(m.yearMonth));
+        listEl.appendChild(row);
+      });
+    }
+
+    async function loadYear(y, afterRender) {
+      const cacheKey = 'kakeibo_settlement_initial_' + y;
+      const cached = cacheGet(cacheKey);
+      if (cached) {
+        yearlyData = cached.yearlyData; year = String(cached.yearlyData.year);
+        renderYearSummary(); initYearSlider(); renderMonthList();
+      } else { setStatus('読み込み中...', null); }
+      try {
+        const result = await window.kakeiboData.getYearlySettlementSummary(y);
+        yearlyData = result; year = String(result.year);
+        renderYearSummary(); initYearSlider(); renderMonthList();
+        cacheSet(cacheKey, { yearlyData: result, ratioPeriods: (cached && cached.ratioPeriods) || [] });
+        setStatus('', null);
+        if (afterRender) afterRender();
+      } catch (err) {
+        if (!cached) setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    async function loadInitial(y, afterRender) {
+      const cacheKey = 'kakeibo_settlement_initial_' + y;
+      const cached = cacheGet(cacheKey);
+      if (cached) {
+        yearlyData = cached.yearlyData; year = String(cached.yearlyData.year);
+        renderYearSummary(); initYearSlider(); renderMonthList(); renderRatioHistory(cached.ratioPeriods);
+      } else { setStatus('読み込み中...', null); }
+      try {
+        const result = await window.kakeiboData.getSettlementScreenInitialData(y);
+        cacheSet(cacheKey, result);
+        yearlyData = result.yearlyData; year = String(result.yearlyData.year);
+        renderYearSummary(); initYearSlider(); renderMonthList(); renderRatioHistory(result.ratioPeriods);
+        setStatus('', null);
+        if (afterRender) afterRender();
+      } catch (err) {
+        if (!cached) setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    function renderRatioHistory(periods) {
+      const el = document.getElementById('ratioHistory');
+      if (periods.length === 0) { el.innerHTML = '<div style="font-size:12px; color:var(--faint);">比率設定がまだありません</div>'; return; }
+      el.innerHTML = periods.map((p) => {
+        const range = p.startDate + ' 〜 ' + (p.endDate || '現在');
+        const tag = p.isCurrent ? '<span class="tag current">現在適用中</span>' : (p.isFuture ? '<span class="tag future">未来の予約</span>' : '');
+        return '<div class="ratioPeriod' + (p.isCurrent ? ' current' : '') + '"><span class="range">' + range + '</span><span class="ratioVal">一' + Math.round(p.ratioKazuichi * 100) + '%：成美' + Math.round(p.ratioNarumi * 100) + '%' + tag + '</span></div>';
+      }).join('');
+    }
+    async function loadRatioHistory() {
+      try { renderRatioHistory(await window.kakeiboData.getSettlementRatioPeriods()); }
+      catch (err) { setStatus('エラー: ' + err.message, 'err'); }
+    }
+
+    document.getElementById('prevYearBtn').addEventListener('click', () => loadYear(Number(year) - 1));
+    document.getElementById('nextYearBtn').addEventListener('click', () => loadYear(Number(year) + 1));
+
+    async function loadMonthDetail(yearMonth, afterRender) {
+      const cacheKey = 'kakeibo_settlement_month_' + yearMonth;
+      const cached = cacheGet(cacheKey);
+      if (cached) { currentMonthSummary = cached; renderMonthDetail(); } else { setStatus('読み込み中...', null); }
+      try {
+        const result = await window.kakeiboData.getSettlementSummary(yearMonth);
+        cacheSet(cacheKey, result);
+        currentMonthSummary = result;
+        renderMonthDetail();
+        setStatus('', null);
+        if (afterRender) afterRender();
+      } catch (err) {
+        if (!cached) setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    function openMonth(yearMonth) {
+      selectedYearMonth = yearMonth;
+      renderMonthList();
+      document.getElementById('monthDetailTitle').textContent = Number(yearMonth.slice(5, 7)) + '月の詳細';
+      monthDetail.style.display = 'block';
+      monthDetail.scrollIntoView({ behavior: 'smooth' });
+      loadMonthDetail(yearMonth);
+    }
+
+    function renderMonthDetail() {
+      const summaryCard = document.getElementById('summaryCard');
+      const resultCard = document.getElementById('resultCard');
+      if (!currentMonthSummary) { summaryCard.textContent = 'データがありません'; resultCard.textContent = ''; return; }
+      const owedRows =
+        ((currentMonthSummary.owedByKazuichi || 0) > 0 ? '<div class="row"><span>一の貸し借り分（全額負担）</span><span>' + fmtYen(currentMonthSummary.owedByKazuichi) + '</span></div>' : '') +
+        ((currentMonthSummary.owedByNarumi || 0) > 0 ? '<div class="row"><span>成美の貸し借り分（全額負担）</span><span>' + fmtYen(currentMonthSummary.owedByNarumi) + '</span></div>' : '');
+      summaryCard.innerHTML =
+        '<div class="row"><span>共用支出合計</span><span>' + fmtYen(currentMonthSummary.totalSharedAmount) + '</span></div>' +
+        '<div class="row"><span>一の支払い</span><span>' + fmtYen(currentMonthSummary.paidKazuichi) + '</span></div>' +
+        '<div class="row"><span>成美の支払い</span><span>' + fmtYen(currentMonthSummary.paidNarumi) + '</span></div>' +
+        owedRows +
+        '<div class="row"><span>現在の比率</span><span>一' + Math.round(currentMonthSummary.ratioKazuichi * 100) + '% : 成美' + Math.round(currentMonthSummary.ratioNarumi * 100) + '%</span></div>';
+
+      document.getElementById('resultToggle').innerHTML = reimbToggleHtml('settle');
+      wireReimbToggle('settle', () => renderMonthDetail());
+      document.getElementById('resultToggleNote').style.display = (showGross || showExclEvent) ? 'block' : 'none';
+
+      const displayed = pickVariant_(currentMonthSummary, currentMonthSummary.transferFrom, currentMonthSummary.transferTo, currentMonthSummary.transferAmount);
+      if (displayed && displayed.transferAmount > 0) {
+        resultCard.innerHTML = '<div>' + displayed.transferFrom + 'が' + displayed.transferTo + 'に</div><div class="amt">' + fmtYen(displayed.transferAmount) + '</div><div>支払う</div>';
+      } else {
+        resultCard.textContent = '精算の必要はありません';
+      }
+
+      const confirmBanner = document.getElementById('confirmBanner');
+      const confirmBtn = document.getElementById('confirmBtn');
+      const unconfirmBtn = document.getElementById('unconfirmBtn');
+      const ratioSection = document.getElementById('ratioSection');
+      if (currentMonthSummary.confirmed) {
+        const when = currentMonthSummary.confirmedAt ? new Date(currentMonthSummary.confirmedAt).toLocaleString('ja-JP') : '';
+        confirmBanner.style.display = 'block';
+        confirmBanner.innerHTML = '✓ この月の精算は確定済みです。比率を変更しても、この金額は変わりません。' + (when ? '<div class="when">確定日時: ' + when + '</div>' : '');
+        confirmBtn.style.display = 'none'; unconfirmBtn.style.display = 'block'; ratioSection.style.display = 'none';
+      } else {
+        confirmBanner.style.display = 'none'; confirmBtn.style.display = 'block'; unconfirmBtn.style.display = 'none'; ratioSection.style.display = 'block';
+      }
+
+      slider.value = Math.round(currentMonthSummary.ratioKazuichi * 100);
+      updateRatioLabels();
+      previewRatio();
+    }
+
+    document.getElementById('confirmBtn').addEventListener('click', async () => {
+      if (!selectedYearMonth) return;
+      if (!confirm('この月の精算を確定します。以後、比率を変更してもこの月の金額は変わらなくなります。よろしいですか？')) return;
+      setStatus('確定中...', null);
+      try {
+        const result = await window.kakeiboData.confirmSettlementMonth(selectedYearMonth);
+        cacheSet('kakeibo_settlement_month_' + selectedYearMonth, result);
+        currentMonthSummary = result;
+        renderMonthDetail();
+        loadYear(Number(year), () => { setStatus('✓ 確定しました', 'ok'); });
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    });
+
+    document.getElementById('unconfirmBtn').addEventListener('click', async () => {
+      if (!selectedYearMonth) return;
+      if (!confirm('この月の確定を解除します。よろしいですか？')) return;
+      setStatus('解除中...', null);
+      try {
+        const result = await window.kakeiboData.unconfirmSettlementMonth(selectedYearMonth);
+        cacheSet('kakeibo_settlement_month_' + selectedYearMonth, result);
+        currentMonthSummary = result;
+        renderMonthDetail();
+        loadYear(Number(year), () => { setStatus('✓ 確定を解除しました', 'ok'); });
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    });
+
+    function updateRatioLabels() {
+      const k = Number(slider.value);
+      document.getElementById('ratioKazuichiLabel').textContent = k;
+      document.getElementById('ratioNarumiLabel').textContent = 100 - k;
+    }
+    function calculateSettlementLocal(totalSharedAmount, paidKazuichi, paidNarumi, ratioKazuichi, ratioNarumi, owedByKazuichi, owedByNarumi) {
+      owedByKazuichi = owedByKazuichi || 0; owedByNarumi = owedByNarumi || 0;
+      const sharedFairShareKazuichi = Math.round(totalSharedAmount * ratioKazuichi);
+      const fairShareKazuichi = sharedFairShareKazuichi + owedByKazuichi;
+      const diffKazuichi = paidKazuichi - fairShareKazuichi;
+      return { ratioKazuichi, ratioNarumi, transferFrom: diffKazuichi >= 0 ? '成美' : '一', transferTo: diffKazuichi >= 0 ? '一' : '成美', transferAmount: Math.abs(diffKazuichi) };
+    }
+    function previewRatio() {
+      if (!currentMonthSummary) return;
+      const newRatioKazuichi = Number(slider.value) / 100;
+      const newRatioNarumi = Number((1 - newRatioKazuichi).toFixed(3));
+      const cur = calculateSettlementLocal(currentMonthSummary.totalSharedAmount, currentMonthSummary.paidKazuichi, currentMonthSummary.paidNarumi, currentMonthSummary.ratioKazuichi, currentMonthSummary.ratioNarumi, currentMonthSummary.owedByKazuichi, currentMonthSummary.owedByNarumi);
+      const prev = calculateSettlementLocal(currentMonthSummary.totalSharedAmount, currentMonthSummary.paidKazuichi, currentMonthSummary.paidNarumi, newRatioKazuichi, newRatioNarumi, currentMonthSummary.owedByKazuichi, currentMonthSummary.owedByNarumi);
+      const box = document.getElementById('compareBox');
+      box.innerHTML =
+        '<div class="box"><div class="label">現在（一' + Math.round(cur.ratioKazuichi * 100) + '%:成美' + Math.round(cur.ratioNarumi * 100) + '%）</div><div class="val">' + fmtYen(cur.transferAmount) + '</div></div>' +
+        '<div class="box"><div class="label">変更後（一' + Math.round(prev.ratioKazuichi * 100) + '%:成美' + Math.round(prev.ratioNarumi * 100) + '%）</div><div class="val">' + fmtYen(prev.transferAmount) + '</div></div>';
+    }
+    slider.addEventListener('input', () => { updateRatioLabels(); previewRatio(); });
+
+    document.getElementById('saveRatioBtn').addEventListener('click', async () => {
+      if (!selectedYearMonth) return;
+      const newRatioKazuichi = Number(slider.value) / 100;
+      setStatus('保存中...', null);
+      try {
+        await window.kakeiboData.saveNewRatio(newRatioKazuichi);
+        loadRatioHistory();
+        loadMonthDetail(selectedYearMonth, () => {
+          loadYear(Number(year), () => { setStatus('✓ 保存しました', 'ok'); });
+        });
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    });
+
+    function startSettlementScreen_() {
+      loadInitial(year, () => { if (initialOpenMonth) openMonth(initialOpenMonth); });
+    }
+    window.kakeiboReady.then((ok) => {
+      if (!ok) { setStatus('ログインできませんでした。LINEアプリから開き直してください。', 'err'); return; }
+      startSettlementScreen_();
+    });
+  </script>
+</body>
+</html>
