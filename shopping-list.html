@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>買い物リスト</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-2pw86Y6j';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --label-muted: #4A5A4E;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --label-muted: #9AA6A0;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    button { width: 100%; padding: 12px; margin-top: 16px; font-size: 16px; background: var(--accent); color: white; border: none; border-radius: 6px; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); }
+    #status { margin-top: 12px; text-align: center; }
+    a.backLink { display: inline-block; margin-bottom: 12px; font-size: 12px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .listItem { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+    .checkbox { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--border); flex: none; cursor: pointer; position: relative; }
+    .checkbox:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .checkbox.pending { opacity: 0.4; pointer-events: none; }
+    .checkbox.checked { background: var(--accent); border-color: var(--accent); }
+    .checkbox.checked::after { content: "✓"; color: #fff; font-size: 14px; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+    .itemName { flex: 1; font-size: 15px; }
+    .itemName.done { color: var(--faint); text-decoration: line-through; }
+    .itemMeta { font-size: 10.5px; color: var(--faint); }
+    .delBtn { flex: none; background: none; border: none; color: var(--danger); font-size: 18px; width: auto; padding: 4px 8px; margin: 0; }
+    .sectionLabel { font-size: 12px; color: var(--faint); font-weight: bold; margin: 20px 0 4px; }
+    .empty { color: var(--faint); text-align: center; padding: 16px 0; font-size: 13px; }
+    .addRow { display: flex; gap: 6px; margin-top: 16px; }
+    .addRow input { flex: 1; padding: 10px; font-size: 15px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; background: var(--panel); color: var(--ink); }
+    .addRow button { width: auto; padding: 10px 18px; margin-top: 0; }
+    .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 6px; }
+    @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    .skel-item { height: 44px; margin-bottom: 4px; }
+    .lineNote { font-size: 12px; margin-top: -8px; }
+    .lineNote a { color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .helpBox { background: var(--accent-soft2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 12px; color: var(--label-muted); white-space: pre-wrap; line-height: 1.7; }
+    .categoryHeader { font-size: 12px; color: var(--accent-ink); font-weight: bold; margin: 16px 0 2px; }
+    .categoryHeader:first-child { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./home.html">← ホームに戻る</a>
+  <h2 id="pageTitle">🛒 買い物リスト</h2>
+  <p class="lineNote">LINEでの操作もできます。<a id="helpToggle" href="javascript:void(0)">閉じる</a></p>
+  <div class="helpBox" id="helpBox" style="display:block;"></div>
+
+  <div id="unpurchasedList">
+    <div class="skel skel-item"></div><div class="skel skel-item"></div><div class="skel skel-item"></div>
+  </div>
+
+  <div class="addRow">
+    <input type="text" id="newItemInput" placeholder="アイテムを追加" />
+    <button type="button" id="addBtn">追加</button>
+  </div>
+
+  <div class="sectionLabel">購入済み（履歴）</div>
+  <div id="purchasedList"></div>
+
+  <div id="status"></div>
+
+  <script>
+    let unpurchasedItems = [];
+    let purchasedItems = [];
+
+    const SHOPPING_CATEGORIES = ['食品', '日用品', 'ペット用品', 'その他'];
+    const LINE_HELP_TEXT =
+      '📖 LINEでできること\n\n' +
+      '・メッセージを送る → 買い物リストに追加\n' +
+      '　（例：牛乳）\n' +
+      '・「完了 アイテム名」→ そのアイテムを完了にする\n' +
+      '　（例：完了 牛乳）\n' +
+      '・「修正 ...」→ 直近の家計簿記録を修正する\n' +
+      '　（例：修正 金額を1200円に）\n' +
+      '・「ヘルプ」または「使い方」→ この説明を表示';
+
+    const helpBox = document.getElementById('helpBox');
+    helpBox.textContent = LINE_HELP_TEXT;
+    document.getElementById('helpToggle').addEventListener('click', () => {
+      const open = helpBox.style.display === 'block';
+      helpBox.style.display = open ? 'none' : 'block';
+      document.getElementById('helpToggle').textContent = open ? '使い方を見る' : '閉じる';
+    });
+
+    function esc(s) {
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function fmtDate(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return (d.getMonth() + 1) + '/' + d.getDate();
+    }
+    function staleDaysBadge(createdAt) {
+      if (!createdAt) return '';
+      const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+      return days >= 3 ? '<span class="itemMeta">' + days + '日前〜</span>' : '';
+    }
+    function setStatus(text, kind) {
+      const el = document.getElementById('status');
+      el.textContent = text;
+      el.style.color = kind === 'err' ? 'var(--danger)' : 'var(--accent-ink)';
+    }
+
+    function renderUnpurchased() {
+      const el = document.getElementById('unpurchasedList');
+      if (unpurchasedItems.length === 0) {
+        el.innerHTML = '<div class="empty">未購入のアイテムはありません</div>';
+        return;
+      }
+      el.innerHTML = '';
+      const groups = SHOPPING_CATEGORIES.concat(['未分類']);
+      groups.forEach((cat) => {
+        const items = unpurchasedItems.filter((item) => (item.category || '未分類') === cat);
+        if (items.length === 0) return;
+        const header = document.createElement('div');
+        header.className = 'categoryHeader';
+        header.textContent = cat + '（' + items.length + '）';
+        el.appendChild(header);
+        items.forEach((item) => {
+          const row = document.createElement('div');
+          row.className = 'listItem';
+          row.innerHTML =
+            '<div class="checkbox" data-id="' + item.id + '" role="checkbox" aria-checked="false" tabindex="0" aria-label="' + esc(item.name) + 'を購入済みにする"></div>' +
+            '<div class="itemName">' + esc(item.name) + '</div>' +
+            staleDaysBadge(item.created_at) +
+            '<button class="delBtn" data-id="' + item.id + '" type="button" aria-label="' + esc(item.name) + 'を削除">✕</button>';
+          el.appendChild(row);
+        });
+      });
+    }
+
+    function renderPurchased() {
+      const el = document.getElementById('purchasedList');
+      if (purchasedItems.length === 0) {
+        el.innerHTML = '<div class="empty">購入済みの履歴はありません</div>';
+        return;
+      }
+      el.innerHTML = '';
+      purchasedItems.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'listItem';
+        row.innerHTML =
+          '<div class="checkbox checked" data-id="' + item.id + '" role="checkbox" aria-checked="true" tabindex="0" aria-label="' + esc(item.name) + 'を未購入に戻す"></div>' +
+          '<div class="itemName done">' + esc(item.name) + '</div>' +
+          '<div class="itemMeta">' + esc(item.category || '未分類') + '・' + fmtDate(item.purchased_at) + '</div>' +
+          '<button class="delBtn" data-id="' + item.id + '" type="button" aria-label="' + esc(item.name) + 'を削除">✕</button>';
+        el.appendChild(row);
+      });
+    }
+
+    function wireRowEvents() {
+      document.querySelectorAll('.checkbox').forEach((box) => {
+        box.addEventListener('click', () => {
+          box.classList.add('pending');
+          togglePurchased(box.dataset.id, !box.classList.contains('checked'), box);
+        });
+        box.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            box.classList.add('pending');
+            togglePurchased(box.dataset.id, !box.classList.contains('checked'), box);
+          }
+        });
+      });
+      document.querySelectorAll('.delBtn').forEach((btn) => {
+        btn.addEventListener('click', () => removeItem(btn.dataset.id));
+      });
+    }
+
+    function renderAll() {
+      document.getElementById('pageTitle').textContent = '🛒 買い物リスト' + (unpurchasedItems.length > 0 ? '（' + unpurchasedItems.length + '）' : '');
+      renderUnpurchased();
+      renderPurchased();
+      wireRowEvents();
+    }
+
+    async function togglePurchased(id, purchased, boxEl) {
+      setStatus(purchased ? '購入済みにしています...' : '未購入に戻しています...', null);
+      try {
+        await window.kakeiboData.toggleShoppingItemPurchased(id, purchased);
+        setStatus('', null);
+        loadAll();
+      } catch (err) {
+        if (boxEl) boxEl.classList.remove('pending');
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    async function removeItem(id) {
+      if (!confirm('このアイテムを削除しますか？')) return;
+      setStatus('削除中...', null);
+      try {
+        await window.kakeiboData.removeShoppingItem(id);
+        setStatus('', null);
+        loadAll();
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    document.getElementById('addBtn').addEventListener('click', () => addItem());
+    document.getElementById('newItemInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') addItem();
+    });
+
+    async function addItem() {
+      const input = document.getElementById('newItemInput');
+      const name = input.value.trim();
+      if (!name) return;
+      setStatus('追加中...', null);
+      try {
+        const result = await window.kakeiboData.addShoppingItemFromLiff(name);
+        if (result.duplicate) {
+          setStatus('「' + result.name + '」は既にリストにあります', 'err');
+          return;
+        }
+        input.value = '';
+        setStatus('', null);
+        loadAll();
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    async function loadAll() {
+      try {
+        const result = await window.kakeiboData.getShoppingScreenData();
+        unpurchasedItems = result.unpurchased;
+        purchasedItems = result.purchased;
+        renderAll();
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    window.kakeiboReady.then((ok) => {
+      if (!ok) { setStatus('ログインできませんでした。LINEアプリから開き直してください。', 'err'); return; }
+      loadAll();
+    });
+  </script>
+</body>
+</html>
