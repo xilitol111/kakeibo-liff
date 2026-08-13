@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>取引履歴</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-Ae2dYXxD';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B;
+      --warn-bg: #FCEFE4; --warn-ink: #A85C1C; --info-bg: #E8EEFB; --info-ink: #2A4E9E;
+      --req-bg: #e5484d; --opt-bg: #eee; --opt-ink: #666;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A;
+        --warn-bg: #2E2114; --warn-ink: #E3A15C; --info-bg: #1A2436; --info-ink: #7FA0E8;
+        --req-bg: #C94A4F; --opt-bg: #2B332F; --opt-ink: #9AA6A0;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    label .required { color: #fff; background: var(--req-bg); font-size: 11px; font-weight: normal; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+    label .optional { color: var(--opt-ink); background: var(--opt-bg); font-size: 11px; font-weight: normal; padding: 2px 6px; border-radius: 4px; margin-left: 4px; }
+    select, input { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 16px; background: var(--panel); color: var(--ink); border: 1px solid var(--border); }
+    button { width: 100%; padding: 12px; margin-top: 20px; font-size: 16px; background: var(--accent); color: white; border: none; border-radius: 6px; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); }
+    button.danger { background: transparent; color: var(--danger); border: 1.5px solid var(--danger); }
+    #status { margin-top: 12px; text-align: center; }
+    #editArea { display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 8px; }
+    .item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .item .name { font-weight: bold; }
+    .item .meta { font-size: 12px; color: var(--faint); }
+    .item .amt { font-weight: bold; }
+    .badge { font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 100px; background: var(--accent-soft); color: var(--muted); margin-left: 6px; }
+    .badge.gmail { background: var(--warn-bg); color: var(--warn-ink); }
+    .badge.recurring { background: var(--info-bg); color: var(--info-ink); }
+    .empty { color: var(--faint); text-align: center; padding: 24px 0; }
+    .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 6px; }
+    @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    .skel-item { height: 44px; margin-bottom: 4px; }
+    a.backLink { display: inline-block; margin-bottom: 12px; font-size: 12px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./home.html">← ホームに戻る</a>
+  <h2>取引履歴</h2>
+  <p style="font-size:12px; color:var(--faint); margin-top:-8px;">直近30件を表示しています。行をタップすると編集できます。カテゴリなどで絞り込みたい場合は<a href="./table.html">表形式編集画面</a>をご利用ください。</p>
+
+  <div id="list">
+    <div class="skel skel-item"></div><div class="skel skel-item"></div><div class="skel skel-item"></div>
+  </div>
+
+  <div id="editArea">
+    <h3>編集</h3>
+    <input type="hidden" id="editId" value="" />
+
+    <label>取引日 <span class="required">必須</span></label>
+    <input type="date" id="occurredAt" />
+
+    <label>カテゴリ <span class="required">必須</span></label>
+    <select id="category"></select>
+
+    <label id="subcategoryLabel">サブカテゴリ <span class="required">必須</span></label>
+    <select id="subcategory"></select>
+
+    <label>支払者 <span class="optional">任意</span></label>
+    <select id="paidBy">
+      <option value="">未設定</option>
+    </select>
+
+    <label>負担先 <span class="required">必須</span></label>
+    <select id="billedTo">
+      <option value="共用">共用（通常の比率で精算）</option>
+    </select>
+
+    <label>金額（円） <span class="required">必須</span></label>
+    <input type="number" id="amount" />
+
+    <label>支払い名称 <span class="optional">任意</span></label>
+    <input type="text" id="name" />
+
+    <button id="saveBtn">保存する</button>
+    <button class="danger" id="deleteBtn" type="button">この記録を削除</button>
+    <button class="ghost" id="cancelBtn" type="button">キャンセル</button>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    const CATEGORY_MAP = window.KAKEIBO_CATEGORY_MAP;
+    const FAMILY_MEMBERS = window.KAKEIBO_FAMILY_MEMBERS;
+    let transactionList = [];
+
+    const listEl = document.getElementById('list');
+    const editArea = document.getElementById('editArea');
+    const categorySelect = document.getElementById('category');
+    const subcategorySelect = document.getElementById('subcategory');
+    const subcategoryLabel = document.getElementById('subcategoryLabel');
+    const paidBySelect = document.getElementById('paidBy');
+    const billedToSelect = document.getElementById('billedTo');
+
+    Object.keys(CATEGORY_MAP).filter((cat) => cat !== '未分類').forEach((cat) => {
+      const opt = document.createElement('option');
+      opt.value = cat; opt.textContent = cat;
+      categorySelect.appendChild(opt);
+    });
+    FAMILY_MEMBERS.forEach((member) => {
+      const opt = document.createElement('option');
+      opt.value = member; opt.textContent = member;
+      paidBySelect.appendChild(opt);
+    });
+    FAMILY_MEMBERS.forEach((member) => {
+      const opt = document.createElement('option');
+      opt.value = member; opt.textContent = member + '（貸し借り）';
+      billedToSelect.appendChild(opt);
+    });
+
+    function updateSubcategoryOptions(selected) {
+      const subs = CATEGORY_MAP[categorySelect.value] || [];
+      subcategorySelect.innerHTML = '';
+      if (subs.length === 0) {
+        subcategorySelect.style.display = 'none';
+        subcategoryLabel.style.display = 'none';
+        return;
+      }
+      subcategorySelect.style.display = 'block';
+      subcategoryLabel.style.display = 'block';
+      subs.forEach((sub) => {
+        const opt = document.createElement('option');
+        opt.value = sub; opt.textContent = sub;
+        subcategorySelect.appendChild(opt);
+      });
+      if (selected) subcategorySelect.value = selected;
+    }
+    categorySelect.addEventListener('change', () => updateSubcategoryOptions());
+
+    function sourceBadge(channel) {
+      if (channel === 'gmail_auto') return '<span class="badge gmail">カード自動</span>';
+      if (channel === 'recurring_auto') return '<span class="badge recurring">定期収支</span>';
+      if (channel === 'manual_import' || channel === 'db_transactions_import') return '<span class="badge">移行データ</span>';
+      return '';
+    }
+    function fmtYen(n) {
+      const v = Number(n || 0);
+      return (v < 0 ? '-¥' : '¥') + Math.abs(v).toLocaleString();
+    }
+    function renderList() {
+      listEl.innerHTML = '';
+      if (transactionList.length === 0) {
+        listEl.innerHTML = '<div class="empty">記録がありません</div>';
+        return;
+      }
+      transactionList.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'item';
+        row.innerHTML =
+          '<div>' +
+            '<div class="name">' + (item.name || '（名称なし）') + sourceBadge(item.source_channel) + '</div>' +
+            '<div class="meta">' + item.occurred_at + '・' + item.category + (item.subcategory ? '／' + item.subcategory : '') + '・' + (item.paid_by || '未設定') + '</div>' +
+          '</div>' +
+          '<div class="amt">' + fmtYen(item.amount) + '</div>';
+        row.addEventListener('click', () => loadIntoForm(item));
+        listEl.appendChild(row);
+      });
+    }
+    function loadIntoForm(item) {
+      document.getElementById('editId').value = item.id;
+      document.getElementById('occurredAt').value = item.occurred_at;
+      const existingUnclassified = categorySelect.querySelector('option[value="未分類"]');
+      if (existingUnclassified) existingUnclassified.remove();
+      if (item.category === '未分類') {
+        const opt = document.createElement('option');
+        opt.value = '未分類'; opt.textContent = '未分類';
+        categorySelect.appendChild(opt);
+      }
+      categorySelect.value = item.category;
+      updateSubcategoryOptions(item.subcategory);
+      paidBySelect.value = item.paid_by || '';
+      billedToSelect.value = item.billed_to || '共用';
+      document.getElementById('amount').value = item.amount;
+      document.getElementById('name').value = item.name || '';
+      document.getElementById('status').textContent = '';
+      editArea.style.display = 'block';
+      editArea.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    document.getElementById('cancelBtn').addEventListener('click', () => { editArea.style.display = 'none'; });
+
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      const id = document.getElementById('editId').value;
+      if (!id || !document.getElementById('amount').value) {
+        document.getElementById('status').textContent = '金額を入力してください';
+        return;
+      }
+      const payload = {
+        occurredAt: document.getElementById('occurredAt').value, category: categorySelect.value,
+        subcategory: subcategorySelect.style.display === 'none' ? null : subcategorySelect.value,
+        paidBy: paidBySelect.value, billedTo: billedToSelect.value,
+        amount: document.getElementById('amount').value, name: document.getElementById('name').value
+      };
+      document.getElementById('status').textContent = '保存中...';
+      try {
+        transactionList = await window.kakeiboData.saveTransactionEdit(id, payload);
+        renderList();
+        editArea.style.display = 'none';
+        document.getElementById('status').textContent = '保存しました';
+      } catch (err) {
+        document.getElementById('status').textContent = 'エラー: ' + err.message;
+      }
+    });
+
+    document.getElementById('deleteBtn').addEventListener('click', async () => {
+      const id = document.getElementById('editId').value;
+      if (!id) return;
+      if (!confirm('この記録を削除しますか？元に戻せません。')) return;
+      document.getElementById('status').textContent = '削除中...';
+      try {
+        transactionList = await window.kakeiboData.deleteTransactionById(id);
+        renderList();
+        editArea.style.display = 'none';
+        document.getElementById('status').textContent = '削除しました';
+      } catch (err) {
+        document.getElementById('status').textContent = 'エラー: ' + err.message;
+      }
+    });
+
+    async function initHistory() {
+      try {
+        transactionList = await window.kakeiboData.listRecentTransactions();
+        renderList();
+      } catch (err) {
+        document.body.insertAdjacentHTML('afterbegin', '<div style="color:var(--danger);">読み込みエラー: ' + err.message + '</div>');
+      }
+    }
+    window.kakeiboReady.then((ok) => {
+      if (!ok) { document.body.insertAdjacentHTML('afterbegin', '<div style="color:var(--danger);">ログインできませんでした。LINEアプリから開き直してください。</div>'); return; }
+      initHistory();
+    });
+  </script>
+</body>
+</html>
