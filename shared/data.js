@@ -273,6 +273,33 @@
     if (res.error) throw new Error(res.error.message);
   }
 
+  // ---- 資産管理 ----
+  // asset_items: 資産項目のプリセット（誰・種別・保管会社）。asset_snapshots: 時点ごとの金額
+  async function fetchAssetItems(activeOnly) {
+    let q = sb().from('asset_items').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
+    if (activeOnly) q = q.eq('active', true);
+    return unwrap(await q);
+  }
+  async function insertAssetItem(record) {
+    return unwrap(await sb().from('asset_items').insert(record).select())[0];
+  }
+  async function updateAssetItem(id, patch) {
+    return unwrap(await sb().from('asset_items').update(patch).eq('id', id).select())[0];
+  }
+  async function deactivateAssetItem(id) {
+    return updateAssetItem(id, { active: false });
+  }
+  async function fetchAllAssetSnapshots() {
+    return unwrap(await sb().from('asset_snapshots')
+      .select('*,asset_items(person,category,institution,active)')
+      .order('as_of_date', { ascending: true }));
+  }
+  async function upsertAssetSnapshotBatch(asOfDate, entries) {
+    if (!entries || entries.length === 0) return [];
+    const records = entries.map((e) => ({ asset_item_id: e.assetItemId, as_of_date: asOfDate, amount: e.amount }));
+    return unwrap(await sb().from('asset_snapshots').upsert(records, { onConflict: 'asset_item_id,as_of_date' }).select());
+  }
+
   // ---- 純粋な計算ロジック（gas/SettlementClient.gs等と同一） ----
 
   function calculateSettlement(totalSharedAmount, paidKazuichi, paidNarumi, ratioKazuichi, ratioNarumi, owedByKazuichi, owedByNarumi) {
@@ -931,6 +958,62 @@
     return deleteShoppingItem(id);
   }
 
+  // ---- 資産管理 ----
+  function buildAssetDateGroups_(snapshotRows) {
+    const byDate = {};
+    snapshotRows.forEach((row) => {
+      if (!row.asset_items) return; // 参照先プリセットが削除済み（通常は起きない、asset_itemsはdeactivateのみ）
+      if (!byDate[row.as_of_date]) byDate[row.as_of_date] = [];
+      byDate[row.as_of_date].push({
+        id: row.id, assetItemId: row.asset_item_id, amount: row.amount,
+        person: row.asset_items.person, category: row.asset_items.category, institution: row.asset_items.institution
+      });
+    });
+    return byDate;
+  }
+
+  async function getAssetScreenInitialData() {
+    const [items, snapshotRows] = await Promise.all([fetchAssetItems(false), fetchAllAssetSnapshots()]);
+    const byDate = buildAssetDateGroups_(snapshotRows);
+    const dates = Object.keys(byDate).sort();
+    const dateSummaries = dates.map((d) => {
+      const entries = byDate[d];
+      const total = entries.reduce((s, e) => s + e.amount, 0);
+      const byPerson = {};
+      const byCategory = {};
+      entries.forEach((e) => {
+        byPerson[e.person] = (byPerson[e.person] || 0) + e.amount;
+        byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
+      });
+      return { date: d, total, byPerson, byCategory, entries };
+    });
+    const latest = dateSummaries.length > 0 ? dateSummaries[dateSummaries.length - 1] : null;
+    const previous = dateSummaries.length > 1 ? dateSummaries[dateSummaries.length - 2] : null;
+    const trend = dateSummaries.slice(-6);
+
+    const latestAmountByItem = {};
+    if (latest) latest.entries.forEach((e) => { latestAmountByItem[e.assetItemId] = e.amount; });
+
+    return {
+      items,
+      dateSummariesDesc: dateSummaries.slice().reverse(),
+      latest, previous, trend, latestAmountByItem
+    };
+  }
+
+  async function saveAssetItem(payload) {
+    const record = {
+      person: payload.person, category: payload.category, institution: payload.institution,
+      sort_order: payload.sortOrder || 0
+    };
+    if (payload.id) return updateAssetItem(payload.id, record);
+    return insertAssetItem(record);
+  }
+
+  async function saveAssetSnapshot(asOfDate, entries) {
+    return upsertAssetSnapshotBatch(asOfDate, entries);
+  }
+
   window.kakeiboData = {
     fmt, todayStr,
     // settlement
@@ -952,6 +1035,8 @@
     // liff form
     submitTransactionFromLiff,
     // shopping list
-    getShoppingScreenData, addShoppingItemFromLiff, toggleShoppingItemPurchased, removeShoppingItem
+    getShoppingScreenData, addShoppingItemFromLiff, toggleShoppingItemPurchased, removeShoppingItem,
+    // asset management
+    getAssetScreenInitialData, saveAssetItem, deactivateAssetItem, saveAssetSnapshot, fetchAssetItems
   };
 })();

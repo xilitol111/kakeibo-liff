@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>資産管理</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-Ae2dYXxD';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --success-bg: #E4F7EC;
+      --code-bg: #F2F7F4;
+      --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300;
+      --axis:#c3c2b7; --grid:#e1e0d9;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --success-bg: #163627;
+        --code-bg: #17231C;
+        --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300;
+        --axis:#383835; --grid:#2c2c2a;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    a.backLink { display: inline-block; margin-bottom: 12px; font-size: 12px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .muted { font-size: 12px; color: var(--faint); }
+    label { display: block; margin-top: 12px; font-weight: bold; font-size: 13px; }
+    select, input[type="text"], input[type="number"], input[type="date"] {
+      width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 16px;
+      background: var(--panel); color: var(--ink); border: 1px solid var(--border); border-radius: 6px;
+    }
+    button { width: 100%; padding: 12px; margin-top: 16px; font-size: 15px; font-weight: bold; background: var(--accent); color: white; border: none; border-radius: 8px; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); }
+    button.small { width: auto; padding: 6px 12px; font-size: 12px; margin: 0; }
+
+    .mini-row { display: flex; gap: 8px; margin: 14px 0; }
+    .mini { flex: 1; background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px; }
+    .mini .lbl { font-size: 10.5px; color: var(--muted); margin-bottom: 3px; }
+    .mini .val { font-size: 15px; font-weight: bold; font-variant-numeric: tabular-nums; }
+    .mini .delta { font-size: 10.5px; color: var(--accent-ink); font-weight: bold; margin-top: 2px; }
+
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 12px 8px; margin-bottom: 12px; }
+    .card h4 { font-size: 12.5px; margin: 0 0 8px; color: var(--muted); font-weight: bold; }
+    .legend { display: flex; flex-wrap: wrap; gap: 7px 12px; font-size: 10.5px; color: var(--muted); margin: 8px 2px 0; }
+    .legend .item { display: flex; align-items: center; gap: 5px; }
+    .legend .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+
+    .snap-card { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+    .snap-head { display: flex; justify-content: space-between; align-items: center; padding: 11px 13px; cursor: pointer; }
+    .snap-head .date { font-size: 12.5px; font-weight: bold; }
+    .snap-head .total { font-size: 14px; font-weight: bold; font-variant-numeric: tabular-nums; }
+    .chip { font-size: 10px; font-weight: bold; padding: 2px 7px; border-radius: 100px; background: var(--accent-soft); color: var(--accent-ink); margin-left: 6px; }
+    .snap-body { display: none; padding: 2px 13px 12px; border-top: 1px solid var(--border); }
+    .snap-card.open .snap-body { display: block; }
+    .breakdown-row { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; padding: 5px 0; color: var(--muted); }
+    .breakdown-row .who { display: inline-flex; align-items: center; gap: 6px; }
+    .breakdown-row .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+    .breakdown-row .amt { font-variant-numeric: tabular-nums; font-weight: bold; color: var(--ink); }
+
+    .form-section-label { font-size: 11.5px; font-weight: bold; color: var(--muted); margin: 14px 2px 6px; }
+    .item-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--border); }
+    .item-row:last-child { border-bottom: none; }
+    .item-row .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    .item-row .meta { flex: 1; min-width: 0; }
+    .item-row .meta .name { font-size: 12.5px; font-weight: bold; }
+    .item-row .meta .prev { font-size: 10.5px; color: var(--faint); }
+    .item-row input.amount-box {
+      width: 118px; flex: none; text-align: right; margin: 0; padding: 7px 9px; font-size: 12.5px;
+    }
+
+    .preset-row { display: flex; align-items: center; gap: 8px; padding: 9px 2px; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .preset-row:last-child { border-bottom: none; }
+    .preset-row .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .preset-row .meta { flex: 1; }
+    .preset-row .meta .name { font-weight: bold; }
+    .preset-row .meta .cat { font-size: 10.5px; color: var(--faint); }
+    .preset-row .act { font-size: 11px; color: var(--accent-ink); font-weight: bold; background: none; border: none; padding: 4px 6px; width: auto; margin: 0; }
+    .preset-row .act.danger { color: var(--danger); }
+
+    .link-row { text-align: center; font-size: 12px; color: var(--muted); margin-top: 10px; }
+    .link-row a { color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .datepick { display: flex; align-items: center; justify-content: space-between; background: var(--code-bg); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; margin-top: 8px; }
+    .datepick input[type="date"] { border: none; background: none; padding: 0; margin: 0; width: auto; font-weight: bold; }
+    #saveTotalHint { font-size: 12px; color: var(--muted); text-align: center; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./home.html">← ホームに戻る</a>
+
+  <!-- ============ メイン画面 ============ -->
+  <div id="viewMain" class="view active">
+    <h2>💰 資産管理</h2>
+    <p class="muted">種別・保管会社ごとに登録した資産を、時点ごとに記録して推移を確認します。</p>
+
+    <div id="miniStats" class="mini-row"><div class="mini"><div class="lbl">読み込み中…</div></div></div>
+
+    <div class="card">
+      <h4>資産推移（種別ごとの積み上げ・世帯合計）</h4>
+      <div id="trendChart"></div>
+      <div id="trendLegend" class="legend"></div>
+    </div>
+
+    <div class="form-section-label">記録した時点</div>
+    <div id="snapshotList"></div>
+
+    <button id="btnGoRecord">＋ 新しい時点を記録</button>
+    <div class="link-row">資産項目の一覧・編集は <a href="javascript:void(0)" id="linkGoPresets">こちら</a></div>
+  </div>
+
+  <!-- ============ 記録画面 ============ -->
+  <div id="viewRecord" class="view">
+    <h2>＋ 新しい時点を記録</h2>
+    <div class="datepick">
+      <span>時点</span>
+      <input type="date" id="recordDate" />
+    </div>
+    <div id="recordItemList"></div>
+    <div class="link-row"><a href="javascript:void(0)" id="linkGoPresetsFromRecord">＋ このプリセットに無い項目を先に登録する</a></div>
+    <div id="saveTotalHint"></div>
+    <button id="btnSaveSnapshot">この内容で保存</button>
+    <button class="ghost" id="btnCancelRecord">キャンセル</button>
+  </div>
+
+  <!-- ============ プリセット管理画面 ============ -->
+  <div id="viewPresets" class="view">
+    <h2>資産項目の管理</h2>
+    <p class="muted">誰・種別・保管会社の組み合わせを登録しておくと、「新しい時点を記録」の入力欄に自動で並びます。</p>
+
+    <div class="card">
+      <h4>登録済み項目</h4>
+      <div id="presetList"></div>
+    </div>
+
+    <div class="card">
+      <h4>新しい項目を追加</h4>
+      <label>誰</label>
+      <select id="newItemPerson"></select>
+      <label>種別</label>
+      <select id="newItemCategory"></select>
+      <label>保管会社</label>
+      <input type="text" id="newItemInstitution" placeholder="例：三井住友銀行" />
+      <button id="btnAddItem">追加</button>
+    </div>
+
+    <button class="ghost" id="btnBackToMain">メインに戻る</button>
+  </div>
+
+  <script>
+    const CATEGORY_COLORS = { '預金': 's1', '投資信託': 's3', '株式': 's2', '保険': 's4', '不動産': 's6', 'その他': 's5' };
+    function colorVar(cat) { return 'var(--' + (CATEGORY_COLORS[cat] || 's5') + ')'; }
+    function yen(n) { return '¥' + Number(n || 0).toLocaleString('ja-JP'); }
+
+    let screenData = null;
+
+    function showView(id) {
+      document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function renderMiniStats() {
+      const latest = screenData.latest, prev = screenData.previous;
+      const total = latest ? latest.total : 0;
+      const prevTotal = prev ? prev.total : null;
+      const deltaHtml = (latest && prev)
+        ? '<div class="delta">' + (total - prevTotal >= 0 ? '▲ +' : '▼ ') + Number(total - prevTotal).toLocaleString('ja-JP') + '</div>' : '';
+      const byPerson = latest ? latest.byPerson : {};
+      const members = window.KAKEIBO_FAMILY_MEMBERS || ['一', '成美'];
+      let html = '<div class="mini"><div class="lbl">世帯合計</div><div class="val">' + yen(total) + '</div>' + deltaHtml + '</div>';
+      members.forEach((m) => {
+        html += '<div class="mini"><div class="lbl">' + m + '</div><div class="val">' + yen(byPerson[m] || 0) + '</div></div>';
+      });
+      document.getElementById('miniStats').innerHTML = html;
+    }
+
+    function renderTrendChart() {
+      const trend = screenData.trend;
+      const categories = window.KAKEIBO_ASSET_CATEGORIES || [];
+      const el = document.getElementById('trendChart');
+      const legendEl = document.getElementById('trendLegend');
+      if (!trend || trend.length === 0) {
+        el.innerHTML = '<p class="muted">まだ記録がありません。</p>';
+        legendEl.innerHTML = '';
+        return;
+      }
+      const maxTotal = Math.max(...trend.map((d) => d.total), 1);
+      const W = 320, H = 130, padL = 8, padR = 8, padT = 10, baseY = 106;
+      const barW = 24;
+      const n = trend.length;
+      const gap = (W - padL - padR - barW * n) / Math.max(n - 1, 1);
+      let bars = '';
+      trend.forEach((d, i) => {
+        const x = padL + i * (barW + gap);
+        let y = baseY;
+        categories.forEach((cat) => {
+          const val = d.byCategory[cat] || 0;
+          if (val <= 0) return;
+          const h = (val / maxTotal) * (baseY - padT);
+          y -= h;
+          bars += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + h + '" fill="' + colorVar(cat) + '"/>';
+        });
+      });
+      const firstLabel = trend[0].date.slice(5).replace('-', '/');
+      const lastLabel = trend[n - 1].date.slice(5).replace('-', '/');
+      const svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="世帯合計資産の積み上げ推移">' +
+        '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + baseY + '" stroke="var(--axis)" stroke-width="1"/>' +
+        '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--axis)" stroke-width="1"/>' +
+        bars +
+        '<text x="' + (padL + barW / 2) + '" y="' + (H - 4) + '" font-size="9" fill="var(--muted)" text-anchor="middle">' + firstLabel + '</text>' +
+        '<text x="' + (padL + (n - 1) * (barW + gap) + barW / 2) + '" y="' + (H - 4) + '" font-size="9" fill="var(--muted)" text-anchor="middle">' + lastLabel + '</text>' +
+        '</svg>';
+      el.innerHTML = svg;
+      legendEl.innerHTML = categories.map((cat) =>
+        '<span class="item"><span class="sw" style="background:' + colorVar(cat) + '"></span>' + cat + '</span>'
+      ).join('');
+    }
+
+    function renderSnapshotList() {
+      const listEl = document.getElementById('snapshotList');
+      if (!screenData.dateSummariesDesc || screenData.dateSummariesDesc.length === 0) {
+        listEl.innerHTML = '<p class="muted">まだ記録がありません。下のボタンから最初の時点を記録してください。</p>';
+        return;
+      }
+      listEl.innerHTML = screenData.dateSummariesDesc.map((d, idx) => {
+        const rows = d.entries.map((e) =>
+          '<div class="breakdown-row"><span class="who"><span class="dot" style="background:' + colorVar(e.category) + '"></span>' +
+          e.person + '・' + e.category + '・' + e.institution + '</span><span class="amt">' + yen(e.amount) + '</span></div>'
+        ).join('');
+        return '<div class="snap-card' + (idx === 0 ? ' open' : '') + '" data-date="' + d.date + '">' +
+          '<div class="snap-head" onclick="this.parentElement.classList.toggle(\'open\')">' +
+          '<span class="date">' + d.date + (idx === 0 ? '<span class="chip">最新</span>' : '') + '</span>' +
+          '<span class="total">' + yen(d.total) + '</span></div>' +
+          '<div class="snap-body">' + rows + '</div></div>';
+      }).join('');
+    }
+
+    function renderAll() {
+      renderMiniStats();
+      renderTrendChart();
+      renderSnapshotList();
+    }
+
+    function openRecordView() {
+      const items = (screenData.items || []).filter((i) => i.active);
+      const dateInput = document.getElementById('recordDate');
+      dateInput.value = window.kakeiboData.todayStr();
+      const members = window.KAKEIBO_FAMILY_MEMBERS || ['一', '成美'];
+      let html = '';
+      if (items.length === 0) {
+        html = '<p class="muted">まだ資産項目が登録されていません。先に「資産項目の管理」から登録してください。</p>';
+      }
+      members.forEach((person) => {
+        const personItems = items.filter((i) => i.person === person);
+        if (personItems.length === 0) return;
+        html += '<div class="form-section-label">' + person + 'の資産</div>';
+        personItems.forEach((item) => {
+          const prevAmount = screenData.latestAmountByItem[item.id];
+          html += '<div class="item-row" data-item-id="' + item.id + '">' +
+            '<span class="dot" style="background:' + colorVar(item.category) + '"></span>' +
+            '<div class="meta"><div class="name">' + item.category + '・' + item.institution + '</div>' +
+            '<div class="prev">' + (prevAmount != null ? '前回 ' + yen(prevAmount) : '前回の記録なし') + '</div></div>' +
+            '<input type="number" class="amount-box" value="' + (prevAmount != null ? prevAmount : '') + '" placeholder="金額" />' +
+            '</div>';
+        });
+      });
+      document.getElementById('recordItemList').innerHTML = html;
+      updateSaveTotalHint();
+      showView('viewRecord');
+    }
+
+    function updateSaveTotalHint() {
+      const inputs = document.querySelectorAll('#recordItemList .amount-box');
+      let total = 0;
+      inputs.forEach((inp) => { total += Number(inp.value || 0); });
+      document.getElementById('saveTotalHint').textContent = '世帯合計 ' + yen(total);
+    }
+
+    async function saveSnapshot() {
+      const date = document.getElementById('recordDate').value;
+      if (!date) { alert('時点（日付）を入力してください'); return; }
+      const rows = document.querySelectorAll('#recordItemList .item-row');
+      const entries = [];
+      rows.forEach((row) => {
+        const amountInput = row.querySelector('.amount-box');
+        const amount = amountInput.value;
+        if (amount === '' || amount === null) return;
+        entries.push({ assetItemId: row.getAttribute('data-item-id'), amount: Number(amount) });
+      });
+      if (entries.length === 0) { alert('金額を1件以上入力してください'); return; }
+      await window.kakeiboData.saveAssetSnapshot(date, entries);
+      screenData = await window.kakeiboData.getAssetScreenInitialData();
+      renderAll();
+      showView('viewMain');
+    }
+
+    function renderPresetList() {
+      const el = document.getElementById('presetList');
+      const items = screenData.items || [];
+      if (items.length === 0) { el.innerHTML = '<p class="muted">まだ登録されていません。</p>'; return; }
+      el.innerHTML = items.map((item) =>
+        '<div class="preset-row">' +
+        '<span class="dot" style="background:' + colorVar(item.category) + (item.active ? '' : ';opacity:.35') + '"></span>' +
+        '<div class="meta"><div class="name">' + item.person + '・' + item.category + '・' + item.institution + (item.active ? '' : '（無効）') + '</div></div>' +
+        (item.active ? '<button class="act danger" data-deactivate="' + item.id + '">無効化</button>' : '') +
+        '</div>'
+      ).join('');
+      el.querySelectorAll('[data-deactivate]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('この項目を無効化しますか？（過去の記録は残ります）')) return;
+          await window.kakeiboData.deactivateAssetItem(btn.getAttribute('data-deactivate'));
+          screenData = await window.kakeiboData.getAssetScreenInitialData();
+          renderPresetList();
+          renderAll();
+        });
+      });
+    }
+
+    function openPresetsView() {
+      renderPresetList();
+      showView('viewPresets');
+    }
+
+    function initSelects() {
+      const personSel = document.getElementById('newItemPerson');
+      (window.KAKEIBO_FAMILY_MEMBERS || []).forEach((m) => {
+        const opt = document.createElement('option'); opt.value = m; opt.textContent = m; personSel.appendChild(opt);
+      });
+      const catSel = document.getElementById('newItemCategory');
+      (window.KAKEIBO_ASSET_CATEGORIES || []).forEach((c) => {
+        const opt = document.createElement('option'); opt.value = c; opt.textContent = c; catSel.appendChild(opt);
+      });
+    }
+
+    async function addPresetItem() {
+      const person = document.getElementById('newItemPerson').value;
+      const category = document.getElementById('newItemCategory').value;
+      const institution = document.getElementById('newItemInstitution').value.trim();
+      if (!institution) { alert('保管会社を入力してください'); return; }
+      await window.kakeiboData.saveAssetItem({ person, category, institution });
+      document.getElementById('newItemInstitution').value = '';
+      screenData = await window.kakeiboData.getAssetScreenInitialData();
+      renderPresetList();
+    }
+
+    document.getElementById('btnGoRecord').addEventListener('click', openRecordView);
+    document.getElementById('linkGoPresets').addEventListener('click', openPresetsView);
+    document.getElementById('linkGoPresetsFromRecord').addEventListener('click', openPresetsView);
+    document.getElementById('btnCancelRecord').addEventListener('click', () => showView('viewMain'));
+    document.getElementById('btnBackToMain').addEventListener('click', () => showView('viewMain'));
+    document.getElementById('btnSaveSnapshot').addEventListener('click', saveSnapshot);
+    document.getElementById('btnAddItem').addEventListener('click', addPresetItem);
+    document.getElementById('recordItemList').addEventListener('input', (e) => {
+      if (e.target.classList.contains('amount-box')) updateSaveTotalHint();
+    });
+
+    initSelects();
+    window.kakeiboReady.then(async (ok) => {
+      if (!ok) {
+        document.body.insertAdjacentHTML('afterbegin', '<div style="color:var(--danger);">ログインできませんでした。LINEアプリから開き直してください。</div>');
+        return;
+      }
+      screenData = await window.kakeiboData.getAssetScreenInitialData();
+      renderAll();
+    });
+  </script>
+</body>
+</html>
