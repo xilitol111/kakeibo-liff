@@ -156,7 +156,7 @@
   </div>
 
   <script>
-    const CATEGORY_COLORS = { '預金': 's1', '投資信託': 's3', '株式': 's2', '保険': 's4', '不動産': 's6', 'その他': 's5' };
+    const CATEGORY_COLORS = { '預金': 's1', '証券': 's2', '保険': 's4', '不動産': 's6', 'その他': 's5' };
     function colorVar(cat) { return 'var(--' + (CATEGORY_COLORS[cat] || 's5') + ')'; }
     function yen(n) { return '¥' + Number(n || 0).toLocaleString('ja-JP'); }
 
