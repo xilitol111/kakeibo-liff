@@ -237,7 +237,12 @@
   }
 
   async function fetchUnclassifiedTransactions() {
-    return unwrap(await sb().from('transactions').select('id,occurred_at').eq('category', '未分類').order('occurred_at', { ascending: true }));
+    return unwrap(await sb().from('transactions').select('id,occurred_at,name,amount,source_channel').eq('category', '未分類').order('occurred_at', { ascending: true }));
+  }
+  async function fetchEventReviewQueue() {
+    return unwrap(await sb().from('event_tag_review_queue')
+      .select('id,transaction_id,suggested_event_name,reason,created_at,transactions(name,amount,occurred_at,category,subcategory)')
+      .order('created_at', { ascending: true }));
   }
   async function fetchAutoImportsSince(sinceTimestamp) {
     return unwrap(await sb().from('transactions')
@@ -683,6 +688,19 @@
     const rows = await fetchUnclassifiedTransactions();
     return { count: rows.length, earliestYear: rows.length > 0 ? Number(rows[0].occurred_at.slice(0, 4)) : null };
   }
+  async function getReviewScreenData() {
+    const [unclassifiedRows, reviewRows, eventNames] = await Promise.all([
+      fetchUnclassifiedTransactions(), fetchEventReviewQueue(), listEventNames()
+    ]);
+    return { unclassified: unclassifiedRows, eventReview: reviewRows, eventNames };
+  }
+  async function resolveUnclassifiedCategory(id, category, subcategory) {
+    await updateTransaction(id, { category, subcategory: subcategory || null });
+  }
+  async function resolveEventReview(transactionId, eventName) {
+    if (eventName) await updateTransaction(transactionId, { event_tag: eventName });
+    unwrap(await sb().from('event_tag_review_queue').delete().eq('transaction_id', transactionId));
+  }
   async function getNewAutoImports(sinceTimestamp) {
     const rows = await fetchAutoImportsSince(sinceTimestamp);
     const total = rows.reduce((sum, r) => sum + Number(r.amount), 0);
@@ -692,18 +710,20 @@
     const today = todayStr();
     const prevMonthYm = previousMonthKey_(today);
     const dayOfMonth = Number(today.slice(8, 10));
-    const [unclassifiedRows, autoImportRows, prevSettlementRows, prevConfirmationRows] = await Promise.all([
-      fetchUnclassifiedTransactions(), fetchAutoImportsSince(sinceTimestamp),
+    const [unclassifiedRows, reviewRows, autoImportRows, prevSettlementRows, prevConfirmationRows] = await Promise.all([
+      fetchUnclassifiedTransactions(), fetchEventReviewQueue(), fetchAutoImportsSince(sinceTimestamp),
       sb().from('settlement_summary').select('*').eq('year_month', prevMonthYm).then(unwrap),
       sb().from('settlement_confirmations').select('*').eq('year_month', prevMonthYm).then(unwrap)
     ]);
     const unclassified = { count: unclassifiedRows.length, earliestYear: unclassifiedRows.length > 0 ? Number(unclassifiedRows[0].occurred_at.slice(0, 4)) : null };
+    const eventReview = { count: reviewRows.length };
+    const needsReview = { total: unclassified.count + eventReview.count, unclassifiedCount: unclassified.count, eventReviewCount: eventReview.count };
     const autoImportTotal = autoImportRows.reduce((sum, r) => sum + Number(r.amount), 0);
     const autoImports = { count: autoImportRows.length, total: autoImportTotal, items: autoImportRows.slice(0, 8), latestCreatedAt: autoImportRows.length > 0 ? autoImportRows[0].created_at : sinceTimestamp };
     const prevHadSpending = prevSettlementRows.length > 0 && prevSettlementRows[0].total_shared_amount > 0;
     const prevConfirmed = prevConfirmationRows.length > 0;
     const unconfirmedSettlement = (prevHadSpending && !prevConfirmed && dayOfMonth >= 5) ? { yearMonth: prevMonthYm, totalSharedAmount: prevSettlementRows[0].total_shared_amount } : null;
-    return { unclassified, autoImports, unconfirmedSettlement };
+    return { unclassified, eventReview, needsReview, autoImports, unconfirmedSettlement };
   }
   async function getMultiYearTrend() {
     const thisYear = Number(fmt(new Date(), 'yyyy'));
@@ -1061,6 +1081,7 @@
     listEventNames, listEventsWithActuals, saveEvent, removeEvent,
     // analysis / home
     getUnclassifiedSummary, getNewAutoImports, getHomeBanners, getMultiYearTrend,
+    getReviewScreenData, resolveUnclassifiedCategory, resolveEventReview,
     getMonthlyCategorySummary, getSubcategorySummary, getYearlyTrendFixed, getHomeMonthOverview, getHomeYearOverview,
     // recurring
     listRecurringExpenses, getRecurringScreenInitialData, saveRecurringExpense, deactivateRecurringExpense, removeRecurringExpense,

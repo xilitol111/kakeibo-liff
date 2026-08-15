@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>要確認</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-Ae2dYXxD';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B;
+      --ai-bg: #F1EBFB; --ai-border: #D3C2F0; --ai-ink: #6B3FA8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A;
+        --ai-bg: #241B33; --ai-border: #3D2E5C; --ai-ink: #B79AE8;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    a.backLink { display: inline-block; margin-bottom: 12px; font-size: 12px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    h2.pageTitle { font-size: 17px; margin: 0 0 4px; }
+    h2.sec { font-size: 12px; font-weight: bold; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin: 22px 0 8px; }
+    h2.sec:first-of-type { margin-top: 4px; }
+    .countBadge { display: inline-block; background: var(--danger); color: #fff; font-size: 10.5px; font-weight: bold; border-radius: 100px; padding: 1px 7px; margin-left: 6px; }
+    .sectionNote { font-size: 11.5px; color: var(--faint); line-height: 1.6; margin: -2px 0 12px; }
+
+    .reviewCard { border: 1px solid var(--border); border-radius: 12px; padding: 12px 13px; margin-bottom: 10px; background: var(--panel); }
+    .reviewCard .txMeta { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px; }
+    .reviewCard .txName { font-size: 13.5px; font-weight: bold; }
+    .reviewCard .txSub { font-size: 11px; color: var(--faint); margin-top: 2px; }
+    .reviewCard .txAmt { font-size: 14px; font-weight: bold; white-space: nowrap; }
+
+    .aiSuggest { background: var(--ai-bg); border: 1px solid var(--ai-border); border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 11.5px; color: var(--ai-ink); line-height: 1.6; }
+    .aiSuggest .lbl { font-weight: bold; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; opacity: 0.8; margin-bottom: 3px; }
+
+    .fieldRow { margin-top: 8px; }
+    .fieldRow label { display: block; font-size: 10.5px; color: var(--muted); margin-bottom: 3px; }
+    select { width: 100%; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 13px; box-sizing: border-box; }
+    .catGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .btnRow { display: flex; gap: 8px; margin-top: 10px; }
+    .btnRow button { flex: 1; padding: 8px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--accent-soft); color: var(--ink); font-weight: bold; font-size: 13px; }
+    .btnRow button.primary { background: var(--accent); border-color: transparent; color: #fff; }
+    .btnRow button.noevent { background: transparent; color: var(--muted); }
+    .btnRow button.saveOnly { flex: none; padding: 8px 20px; }
+    .btnRow button:disabled { opacity: 0.5; }
+
+    .empty { text-align: center; padding: 30px 10px; color: var(--faint); font-size: 12.5px; }
+    .empty .check { font-size: 26px; margin-bottom: 6px; }
+    .cardErr { color: var(--danger); font-size: 11.5px; margin-top: 6px; }
+
+    .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 12px; }
+    .skel-card { height: 90px; margin-bottom: 10px; }
+    @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+    #status { margin-top: 14px; text-align: center; font-size: 12.5px; }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./home.html">← ホームに戻る</a>
+  <h2 class="pageTitle">要確認</h2>
+
+  <div id="content">
+    <div class="skel skel-card"></div><div class="skel skel-card"></div>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    let unclassified = [];
+    let eventReview = [];
+    let eventNames = [];
+
+    function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function fmtYen(n) { const v = Number(n); return (v < 0 ? '-¥' : '¥') + Math.abs(v).toLocaleString(); }
+    function fmtDate(iso) { if (!iso) return ''; const parts = iso.split('-'); return parts[1] + '/' + parts[2]; }
+    function setStatus(text, kind) {
+      const el = document.getElementById('status');
+      el.textContent = text;
+      el.style.color = kind === 'err' ? 'var(--danger)' : 'var(--accent-ink)';
+    }
+
+    function buildCategoryOptions() {
+      let html = '<option value="">選択してください</option>';
+      Object.keys(window.KAKEIBO_CATEGORY_MAP).forEach((cat) => {
+        if (cat === '未分類') return;
+        html += '<option value="' + cat + '">' + cat + '</option>';
+      });
+      return html;
+    }
+    function buildSubcategoryOptions(category) {
+      const subs = window.KAKEIBO_CATEGORY_MAP[category] || [];
+      if (subs.length === 0) return '<option value="">―</option>';
+      let html = '<option value="">選択してください</option>';
+      subs.forEach((sub) => { html += '<option value="' + sub + '">' + sub + '</option>'; });
+      return html;
+    }
+    function buildEventOptions(selected) {
+      let html = '<option value=""' + (!selected ? ' selected' : '') + '>― 該当イベントを選択 ―</option>';
+      eventNames.forEach((name) => {
+        html += '<option value="' + esc(name) + '"' + (name === selected ? ' selected' : '') + '>' + esc(name) + (name === selected ? '（AIの推測）' : '') + '</option>';
+      });
+      return html;
+    }
+
+    function renderContent() {
+      const totalCount = unclassified.length + eventReview.length;
+      const el = document.getElementById('content');
+      if (totalCount === 0) {
+        el.innerHTML = '<div class="empty"><div class="check">✓</div>確認が必要な項目はありません</div>';
+        return;
+      }
+      let html = '';
+
+      if (unclassified.length > 0) {
+        html += '<h2 class="sec">📋 カテゴリ未分類<span class="countBadge">' + unclassified.length + '</span></h2>';
+        html += '<p class="sectionNote">カテゴリが自動で判定できなかった取引です。カテゴリ・サブカテゴリを選んで保存してください。</p>';
+        unclassified.forEach((tx) => {
+          html += '<div class="reviewCard" data-unclassified-id="' + tx.id + '">' +
+            '<div class="txMeta"><div><div class="txName">' + esc(tx.name || '（名称なし）') + '</div>' +
+            '<div class="txSub">' + fmtDate(tx.occurred_at) + '</div></div>' +
+            '<div class="txAmt">' + fmtYen(tx.amount) + '</div></div>' +
+            '<div class="catGrid">' +
+            '<div class="fieldRow"><label>カテゴリ</label><select class="catSelect">' + buildCategoryOptions() + '</select></div>' +
+            '<div class="fieldRow"><label>サブカテゴリ</label><select class="subSelect"><option value="">―</option></select></div>' +
+            '</div>' +
+            '<div class="btnRow"><button class="primary saveOnly saveCatBtn" disabled>保存</button></div>' +
+            '<div class="cardErr" style="display:none;"></div>' +
+            '</div>';
+        });
+      }
+
+      if (eventReview.length > 0) {
+        html += '<h2 class="sec">🏷️ イベント判定保留<span class="countBadge">' + eventReview.length + '</span></h2>';
+        html += '<p class="sectionNote">期間の近いイベント候補はあるものの、AIが内容だけでは関連の有無を確信できなかった取引です。採用するイベントを選ぶか、「イベントなしで確定」してください。</p>';
+        eventReview.forEach((row) => {
+          const tx = row.transactions || {};
+          html += '<div class="reviewCard" data-review-id="' + row.id + '" data-tx-id="' + row.transaction_id + '">' +
+            '<div class="txMeta"><div><div class="txName">' + esc(tx.name || '（名称なし）') + '</div>' +
+            '<div class="txSub">' + fmtDate(tx.occurred_at) + '</div></div>' +
+            '<div class="txAmt">' + fmtYen(tx.amount) + '</div></div>' +
+            (row.reason ? '<div class="aiSuggest"><div class="lbl">AIの判定理由</div>' + esc(row.reason) + '</div>' : '') +
+            '<div class="fieldRow"><label>イベント</label><select class="eventSelect">' + buildEventOptions(row.suggested_event_name) + '</select></div>' +
+            '<div class="btnRow">' +
+            '<button class="primary confirmEventBtn">このイベントで確定</button>' +
+            '<button class="noevent noEventBtn">イベントなしで確定</button>' +
+            '</div>' +
+            '<div class="cardErr" style="display:none;"></div>' +
+            '</div>';
+        });
+      }
+
+      el.innerHTML = html;
+      wireEvents();
+    }
+
+    function wireEvents() {
+      document.querySelectorAll('[data-unclassified-id]').forEach((card) => {
+        const catSelect = card.querySelector('.catSelect');
+        const subSelect = card.querySelector('.subSelect');
+        const saveBtn = card.querySelector('.saveCatBtn');
+        catSelect.addEventListener('change', () => {
+          subSelect.innerHTML = catSelect.value ? buildSubcategoryOptions(catSelect.value) : '<option value="">―</option>';
+          saveBtn.disabled = !catSelect.value;
+        });
+        saveBtn.addEventListener('click', () => saveUnclassified(card));
+      });
+      document.querySelectorAll('[data-review-id]').forEach((card) => {
+        card.querySelector('.confirmEventBtn').addEventListener('click', () => saveEventReview(card, false));
+        card.querySelector('.noEventBtn').addEventListener('click', () => saveEventReview(card, true));
+      });
+    }
+
+    function showCardErr(card, message) {
+      const errEl = card.querySelector('.cardErr');
+      errEl.textContent = 'エラー: ' + message;
+      errEl.style.display = 'block';
+    }
+
+    async function saveUnclassified(card) {
+      const id = card.dataset.unclassifiedId;
+      const category = card.querySelector('.catSelect').value;
+      const subcategory = card.querySelector('.subSelect').value;
+      card.querySelector('.saveCatBtn').disabled = true;
+      try {
+        await window.kakeiboData.resolveUnclassifiedCategory(id, category, subcategory);
+        unclassified = unclassified.filter((tx) => tx.id !== id);
+        renderContent();
+        setStatus('保存しました', null);
+      } catch (err) {
+        showCardErr(card, err.message);
+        card.querySelector('.saveCatBtn').disabled = false;
+      }
+    }
+
+    async function saveEventReview(card, noEvent) {
+      const txId = card.dataset.txId;
+      const eventName = noEvent ? null : card.querySelector('.eventSelect').value;
+      if (!noEvent && !eventName) { showCardErr(card, 'イベントを選択してください'); return; }
+      card.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+      try {
+        await window.kakeiboData.resolveEventReview(txId, eventName);
+        eventReview = eventReview.filter((row) => row.transaction_id !== txId);
+        renderContent();
+        setStatus('確定しました', null);
+      } catch (err) {
+        showCardErr(card, err.message);
+        card.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+      }
+    }
+
+    async function loadAll() {
+      try {
+        const result = await window.kakeiboData.getReviewScreenData();
+        unclassified = result.unclassified;
+        eventReview = result.eventReview;
+        eventNames = result.eventNames;
+        renderContent();
+      } catch (err) {
+        setStatus('エラー: ' + err.message, 'err');
+      }
+    }
+
+    window.kakeiboReady.then((ok) => {
+      if (!ok) { setStatus('ログインできませんでした。LINEアプリから開き直してください。', 'err'); return; }
+      loadAll();
+    });
+  </script>
+</body>
+</html>
