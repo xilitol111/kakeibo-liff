@@ -17,6 +17,7 @@
       --accent-soft2: #F2F7F4; --danger: #C0392B; --success-bg: #E4F7EC;
       --code-bg: #F2F7F4;
       --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300;
+      --liab:#d03b3b;
       --axis:#c3c2b7; --grid:#e1e0d9;
     }
     @media (prefers-color-scheme: dark) {
@@ -26,6 +27,7 @@
         --accent-soft2: #17231C; --danger: #E5766A; --success-bg: #163627;
         --code-bg: #17231C;
         --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300;
+        --liab:#e5766a;
         --axis:#383835; --grid:#2c2c2a;
       }
     }
@@ -105,7 +107,7 @@
     <div id="miniStats" class="mini-row"><div class="mini"><div class="lbl">読み込み中…</div></div></div>
 
     <div class="card">
-      <h4>資産推移（種別ごとの積み上げ・世帯合計）</h4>
+      <h4>純資産の推移（資産・負債の種別ごとの積み上げ）</h4>
       <div id="trendChart"></div>
       <div id="trendLegend" class="legend"></div>
     </div>
@@ -143,11 +145,16 @@
 
     <div class="card">
       <h4>新しい項目を追加</h4>
+      <label>資産／負債</label>
+      <select id="newItemType">
+        <option value="asset">資産</option>
+        <option value="liability">負債</option>
+      </select>
       <label>誰</label>
       <select id="newItemPerson"></select>
       <label>種別</label>
       <select id="newItemCategory"></select>
-      <label>保管会社</label>
+      <label id="newItemInstitutionLabel">保管会社</label>
       <input type="text" id="newItemInstitution" placeholder="例：三井住友銀行" />
       <button id="btnAddItem">追加</button>
     </div>
@@ -158,6 +165,7 @@
   <script>
     const CATEGORY_COLORS = { '預金': 's1', '証券': 's2', '保険': 's4', '不動産': 's6', 'その他': 's5' };
     function colorVar(cat) { return 'var(--' + (CATEGORY_COLORS[cat] || 's5') + ')'; }
+    function dotColorFor(item) { return (item.item_type === 'liability' || item.itemType === 'liability') ? 'var(--liab)' : colorVar(item.category); }
     function yen(n) { return '¥' + Number(n || 0).toLocaleString('ja-JP'); }
 
     let screenData = null;
@@ -169,16 +177,17 @@
 
     function renderMiniStats() {
       const latest = screenData.latest, prev = screenData.previous;
-      const total = latest ? latest.total : 0;
-      const prevTotal = prev ? prev.total : null;
+      const netWorth = latest ? latest.netWorth : 0;
+      const assetTotal = latest ? latest.assetTotal : 0;
+      const liabilityTotal = latest ? latest.liabilityTotal : 0;
+      const prevNetWorth = prev ? prev.netWorth : null;
       const deltaHtml = (latest && prev)
-        ? '<div class="delta">' + (total - prevTotal >= 0 ? '▲ +' : '▼ ') + Number(total - prevTotal).toLocaleString('ja-JP') + '</div>' : '';
-      const byPerson = latest ? latest.byPerson : {};
-      const members = window.KAKEIBO_FAMILY_MEMBERS || ['一', '成美'];
-      let html = '<div class="mini"><div class="lbl">世帯合計</div><div class="val">' + yen(total) + '</div>' + deltaHtml + '</div>';
-      members.forEach((m) => {
-        html += '<div class="mini"><div class="lbl">' + m + '</div><div class="val">' + yen(byPerson[m] || 0) + '</div></div>';
-      });
+        ? '<div class="delta">' + (netWorth - prevNetWorth >= 0 ? '▲ +' : '▼ ') + Number(netWorth - prevNetWorth).toLocaleString('ja-JP') + '</div>' : '';
+      let html = '<div class="mini"><div class="lbl">純資産</div><div class="val">' + yen(netWorth) + '</div>' + deltaHtml + '</div>';
+      html += '<div class="mini"><div class="lbl">資産合計</div><div class="val">' + yen(assetTotal) + '</div></div>';
+      if (liabilityTotal > 0) {
+        html += '<div class="mini"><div class="lbl">負債合計</div><div class="val" style="color:var(--liab);">' + yen(liabilityTotal) + '</div></div>';
+      }
       document.getElementById('miniStats').innerHTML = html;
     }
 
@@ -192,28 +201,37 @@
         legendEl.innerHTML = '';
         return;
       }
-      const maxTotal = Math.max(...trend.map((d) => d.total), 1);
-      const W = 320, H = 130, padL = 8, padR = 8, padT = 10, baseY = 106;
+      const hasLiability = trend.some((d) => d.liabilityTotal > 0);
+      const maxAsset = Math.max(...trend.map((d) => d.assetTotal), 1);
+      const maxLiability = Math.max(...trend.map((d) => d.liabilityTotal), 0);
+      const W = 320, H = hasLiability ? 150 : 130, padL = 8, padR = 8, padT = 10, padB = 18;
+      const plotH = H - padT - padB;
+      const assetShare = (maxAsset + maxLiability) > 0 ? maxAsset / (maxAsset + maxLiability) : 1;
+      const zeroY = padT + plotH * assetShare;
       const barW = 24;
       const n = trend.length;
       const gap = (W - padL - padR - barW * n) / Math.max(n - 1, 1);
       let bars = '';
       trend.forEach((d, i) => {
         const x = padL + i * (barW + gap);
-        let y = baseY;
+        let y = zeroY;
         categories.forEach((cat) => {
           const val = d.byCategory[cat] || 0;
           if (val <= 0) return;
-          const h = (val / maxTotal) * (baseY - padT);
+          const h = (val / maxAsset) * (zeroY - padT);
           y -= h;
           bars += '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + h + '" fill="' + colorVar(cat) + '"/>';
         });
+        if (d.liabilityTotal > 0) {
+          const h = (d.liabilityTotal / maxLiability) * (padT + plotH - zeroY);
+          bars += '<rect x="' + x + '" y="' + zeroY + '" width="' + barW + '" height="' + h + '" fill="var(--liab)"/>';
+        }
       });
       const firstLabel = trend[0].date.slice(5).replace('-', '/');
       const lastLabel = trend[n - 1].date.slice(5).replace('-', '/');
-      const svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="世帯合計資産の積み上げ推移">' +
-        '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + baseY + '" stroke="var(--axis)" stroke-width="1"/>' +
-        '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--axis)" stroke-width="1"/>' +
+      const svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="純資産の推移（資産は0より上、負債は0より下に積み上げ表示）">' +
+        '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + (padT + plotH) + '" stroke="var(--axis)" stroke-width="1"/>' +
+        '<line x1="' + padL + '" y1="' + zeroY + '" x2="' + (W - padR) + '" y2="' + zeroY + '" stroke="var(--axis)" stroke-width="1"/>' +
         bars +
         '<text x="' + (padL + barW / 2) + '" y="' + (H - 4) + '" font-size="9" fill="var(--muted)" text-anchor="middle">' + firstLabel + '</text>' +
         '<text x="' + (padL + (n - 1) * (barW + gap) + barW / 2) + '" y="' + (H - 4) + '" font-size="9" fill="var(--muted)" text-anchor="middle">' + lastLabel + '</text>' +
@@ -221,7 +239,12 @@
       el.innerHTML = svg;
       legendEl.innerHTML = categories.map((cat) =>
         '<span class="item"><span class="sw" style="background:' + colorVar(cat) + '"></span>' + cat + '</span>'
-      ).join('');
+      ).join('') + (hasLiability ? '<span class="item"><span class="sw" style="background:var(--liab)"></span>負債</span>' : '');
+    }
+
+    function breakdownRowHtml(e, dotColor) {
+      return '<div class="breakdown-row"><span class="who"><span class="dot" style="background:' + dotColor + '"></span>' +
+        e.person + '・' + e.category + '・' + e.institution + '</span><span class="amt">' + yen(e.amount) + '</span></div>';
     }
 
     function renderSnapshotList() {
@@ -231,15 +254,18 @@
         return;
       }
       listEl.innerHTML = screenData.dateSummariesDesc.map((d, idx) => {
-        const rows = d.entries.map((e) =>
-          '<div class="breakdown-row"><span class="who"><span class="dot" style="background:' + colorVar(e.category) + '"></span>' +
-          e.person + '・' + e.category + '・' + e.institution + '</span><span class="amt">' + yen(e.amount) + '</span></div>'
-        ).join('');
+        const assetEntries = d.entries.filter((e) => e.itemType !== 'liability');
+        const liabilityEntries = d.entries.filter((e) => e.itemType === 'liability');
+        const assetRows = assetEntries.map((e) => breakdownRowHtml(e, colorVar(e.category))).join('');
+        const liabilitySection = liabilityEntries.length > 0
+          ? '<div class="form-section-label" style="margin:10px 2px 2px;">負債</div>' +
+            liabilityEntries.map((e) => breakdownRowHtml(e, 'var(--liab)')).join('')
+          : '';
         return '<div class="snap-card' + (idx === 0 ? ' open' : '') + '" data-date="' + d.date + '">' +
           '<div class="snap-head" onclick="this.parentElement.classList.toggle(\'open\')">' +
           '<span class="date">' + d.date + (idx === 0 ? '<span class="chip">最新</span>' : '') + '</span>' +
-          '<span class="total">' + yen(d.total) + '</span></div>' +
-          '<div class="snap-body">' + rows + '</div></div>';
+          '<span class="total">' + yen(d.netWorth) + '</span></div>' +
+          '<div class="snap-body">' + assetRows + liabilitySection + '</div></div>';
       }).join('');
     }
 
@@ -258,18 +284,22 @@
       if (items.length === 0) {
         html = '<p class="muted">まだ資産項目が登録されていません。先に「資産項目の管理」から登録してください。</p>';
       }
-      members.forEach((person) => {
-        const personItems = items.filter((i) => i.person === person);
-        if (personItems.length === 0) return;
-        html += '<div class="form-section-label">' + person + 'の資産</div>';
-        personItems.forEach((item) => {
-          const prevAmount = screenData.latestAmountByItem[item.id];
-          html += '<div class="item-row" data-item-id="' + item.id + '">' +
-            '<span class="dot" style="background:' + colorVar(item.category) + '"></span>' +
-            '<div class="meta"><div class="name">' + item.category + '・' + item.institution + '</div>' +
-            '<div class="prev">' + (prevAmount != null ? '前回 ' + yen(prevAmount) : '前回の記録なし') + '</div></div>' +
-            '<input type="number" class="amount-box" value="' + (prevAmount != null ? prevAmount : '') + '" placeholder="金額" />' +
-            '</div>';
+      const groups = [{ type: 'asset', label: '資産' }, { type: 'liability', label: '負債' }];
+      groups.forEach((g) => {
+        const typeItems = items.filter((i) => (i.item_type || 'asset') === g.type);
+        members.forEach((person) => {
+          const personItems = typeItems.filter((i) => i.person === person);
+          if (personItems.length === 0) return;
+          html += '<div class="form-section-label">' + person + 'の' + g.label + '</div>';
+          personItems.forEach((item) => {
+            const prevAmount = screenData.latestAmountByItem[item.id];
+            html += '<div class="item-row" data-item-id="' + item.id + '">' +
+              '<span class="dot" style="background:' + dotColorFor(item) + '"></span>' +
+              '<div class="meta"><div class="name">' + item.category + '・' + item.institution + '</div>' +
+              '<div class="prev">' + (prevAmount != null ? '前回 ' + yen(prevAmount) : '前回の記録なし') + '</div></div>' +
+              '<input type="number" class="amount-box" value="' + (prevAmount != null ? prevAmount : '') + '" placeholder="金額" />' +
+              '</div>';
+          });
         });
       });
       document.getElementById('recordItemList').innerHTML = html;
@@ -279,9 +309,15 @@
 
     function updateSaveTotalHint() {
       const inputs = document.querySelectorAll('#recordItemList .amount-box');
-      let total = 0;
-      inputs.forEach((inp) => { total += Number(inp.value || 0); });
-      document.getElementById('saveTotalHint').textContent = '世帯合計 ' + yen(total);
+      const itemsById = {}; (screenData.items || []).forEach((i) => { itemsById[i.id] = i; });
+      let netWorth = 0;
+      inputs.forEach((inp) => {
+        const row = inp.closest('.item-row');
+        const item = itemsById[row.getAttribute('data-item-id')];
+        const sign = (item && item.item_type === 'liability') ? -1 : 1;
+        netWorth += sign * Number(inp.value || 0);
+      });
+      document.getElementById('saveTotalHint').textContent = '純資産 ' + yen(netWorth);
     }
 
     async function saveSnapshot() {
@@ -308,7 +344,7 @@
       if (items.length === 0) { el.innerHTML = '<p class="muted">まだ登録されていません。</p>'; return; }
       el.innerHTML = items.map((item) =>
         '<div class="preset-row">' +
-        '<span class="dot" style="background:' + colorVar(item.category) + (item.active ? '' : ';opacity:.35') + '"></span>' +
+        '<span class="dot" style="background:' + dotColorFor(item) + (item.active ? '' : ';opacity:.35') + '"></span>' +
         '<div class="meta"><div class="name">' + item.person + '・' + item.category + '・' + item.institution + (item.active ? '' : '（無効）') + '</div></div>' +
         (item.active ? '<button class="act danger" data-deactivate="' + item.id + '">無効化</button>' : '') +
         '</div>'
@@ -329,23 +365,32 @@
       showView('viewPresets');
     }
 
+    function populateCategoryOptions() {
+      const type = document.getElementById('newItemType').value;
+      const catSel = document.getElementById('newItemCategory');
+      catSel.innerHTML = '';
+      const list = type === 'liability' ? (window.KAKEIBO_LIABILITY_CATEGORIES || []) : (window.KAKEIBO_ASSET_CATEGORIES || []);
+      list.forEach((c) => { const opt = document.createElement('option'); opt.value = c; opt.textContent = c; catSel.appendChild(opt); });
+      document.getElementById('newItemInstitutionLabel').textContent = type === 'liability' ? '借入先・備考' : '保管会社';
+      document.getElementById('newItemInstitution').placeholder = type === 'liability' ? '例：住宅金融支援機構' : '例：三井住友銀行';
+    }
+
     function initSelects() {
       const personSel = document.getElementById('newItemPerson');
       (window.KAKEIBO_FAMILY_MEMBERS || []).forEach((m) => {
         const opt = document.createElement('option'); opt.value = m; opt.textContent = m; personSel.appendChild(opt);
       });
-      const catSel = document.getElementById('newItemCategory');
-      (window.KAKEIBO_ASSET_CATEGORIES || []).forEach((c) => {
-        const opt = document.createElement('option'); opt.value = c; opt.textContent = c; catSel.appendChild(opt);
-      });
+      populateCategoryOptions();
+      document.getElementById('newItemType').addEventListener('change', populateCategoryOptions);
     }
 
     async function addPresetItem() {
+      const itemType = document.getElementById('newItemType').value;
       const person = document.getElementById('newItemPerson').value;
       const category = document.getElementById('newItemCategory').value;
       const institution = document.getElementById('newItemInstitution').value.trim();
-      if (!institution) { alert('保管会社を入力してください'); return; }
-      await window.kakeiboData.saveAssetItem({ person, category, institution });
+      if (!institution) { alert((itemType === 'liability' ? '借入先・備考' : '保管会社') + 'を入力してください'); return; }
+      await window.kakeiboData.saveAssetItem({ person, category, institution, itemType });
       document.getElementById('newItemInstitution').value = '';
       screenData = await window.kakeiboData.getAssetScreenInitialData();
       renderPresetList();

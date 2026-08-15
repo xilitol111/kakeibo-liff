@@ -13,3 +13,4 @@ window.KAKEIBO_CATEGORY_MAP = {
 window.KAKEIBO_FAMILY_MEMBERS = ['一', '成美'];
 window.KAKEIBO_SHOPPING_CATEGORIES = ['食品', '日用品', 'ペット用品', 'その他'];
 window.KAKEIBO_ASSET_CATEGORIES = ['預金', '証券', '保険', '不動産', 'その他'];
+window.KAKEIBO_LIABILITY_CATEGORIES = ['住宅ローン', '自動車ローン', 'その他負債'];

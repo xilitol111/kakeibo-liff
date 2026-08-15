@@ -296,7 +296,7 @@
   }
   async function fetchAllAssetSnapshots() {
     return unwrap(await sb().from('asset_snapshots')
-      .select('*,asset_items(person,category,institution,active)')
+      .select('*,asset_items(person,category,institution,active,item_type)')
       .order('as_of_date', { ascending: true }));
   }
   async function upsertAssetSnapshotBatch(asOfDate, entries) {
@@ -1022,7 +1022,8 @@
       if (!byDate[row.as_of_date]) byDate[row.as_of_date] = [];
       byDate[row.as_of_date].push({
         id: row.id, assetItemId: row.asset_item_id, amount: row.amount,
-        person: row.asset_items.person, category: row.asset_items.category, institution: row.asset_items.institution
+        person: row.asset_items.person, category: row.asset_items.category, institution: row.asset_items.institution,
+        itemType: row.asset_items.item_type || 'asset'
       });
     });
     return byDate;
@@ -1034,14 +1035,14 @@
     const dates = Object.keys(byDate).sort();
     const dateSummaries = dates.map((d) => {
       const entries = byDate[d];
-      const total = entries.reduce((s, e) => s + e.amount, 0);
-      const byPerson = {};
-      const byCategory = {};
-      entries.forEach((e) => {
-        byPerson[e.person] = (byPerson[e.person] || 0) + e.amount;
-        byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
-      });
-      return { date: d, total, byPerson, byCategory, entries };
+      const assetEntries = entries.filter((e) => e.itemType !== 'liability');
+      const liabilityEntries = entries.filter((e) => e.itemType === 'liability');
+      const assetTotal = assetEntries.reduce((s, e) => s + e.amount, 0);
+      const liabilityTotal = liabilityEntries.reduce((s, e) => s + e.amount, 0);
+      const byCategory = {}, byLiabilityCategory = {};
+      assetEntries.forEach((e) => { byCategory[e.category] = (byCategory[e.category] || 0) + e.amount; });
+      liabilityEntries.forEach((e) => { byLiabilityCategory[e.category] = (byLiabilityCategory[e.category] || 0) + e.amount; });
+      return { date: d, assetTotal, liabilityTotal, netWorth: assetTotal - liabilityTotal, byCategory, byLiabilityCategory, entries };
     });
     const latest = dateSummaries.length > 0 ? dateSummaries[dateSummaries.length - 1] : null;
     const previous = dateSummaries.length > 1 ? dateSummaries[dateSummaries.length - 2] : null;
@@ -1060,6 +1061,7 @@
   async function saveAssetItem(payload) {
     const record = {
       person: payload.person, category: payload.category, institution: payload.institution,
+      item_type: payload.itemType === 'liability' ? 'liability' : 'asset',
       sort_order: payload.sortOrder || 0
     };
     if (payload.id) return updateAssetItem(payload.id, record);
