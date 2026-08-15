@@ -98,6 +98,9 @@
     .empty { font-size: 12px; color: var(--faint); text-align: center; padding: 10px 0; }
     a.link { display: block; margin-top: 8px; font-size: 13px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
     .navlink { display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--border); margin-top: 16px; text-decoration: none; color: inherit; }
+    .lineNote { font-size: 12px; margin-top: 16px; color: var(--muted); }
+    .lineNote a { color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    .helpBox { display: none; background: var(--accent-soft2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 12px; color: var(--muted); white-space: pre-wrap; line-height: 1.7; }
     .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 6px; }
     @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
     .skel-frame { height: 220px; }
@@ -149,6 +152,9 @@
   <a class="navlink" href="./table.html">全件を表形式で編集する <span>›</span></a>
   <a class="navlink" href="./shopping-list.html">🛒 買い物リスト <span>›</span></a>
   <a class="navlink" href="./asset-form.html">💰 資産管理 <span>›</span></a>
+
+  <p class="lineNote">LINEでの操作もできます。<a id="helpToggle" href="javascript:void(0)">使い方を見る</a></p>
+  <div class="helpBox" id="helpBox"></div>
 
   <script>
     let year = String(new Date().getFullYear());
@@ -569,6 +575,14 @@
       loadHomeBanners();
       loadMultiYearTrend();
     }
+
+    const helpBox = document.getElementById('helpBox');
+    helpBox.textContent = window.buildLineHelpText();
+    document.getElementById('helpToggle').addEventListener('click', () => {
+      const open = helpBox.style.display === 'block';
+      helpBox.style.display = open ? 'none' : 'block';
+      document.getElementById('helpToggle').textContent = open ? '使い方を見る' : '閉じる';
+    });
 
     window.kakeiboReady.then((ok) => {
       if (!ok) { document.body.insertAdjacentHTML('afterbegin', '<div style="color:var(--danger);">ログインできませんでした。LINEアプリから開き直してください。</div>'); return; }

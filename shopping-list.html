@@ -7,6 +7,7 @@
   <script>window.KAKEIBO_LIFF_ID = '2010928882-2pw86Y6j';</script>
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
   <script src="./shared/auth.js"></script>
   <script src="./shared/data.js"></script>
   <style>
@@ -77,18 +78,9 @@
     let purchasedItems = [];
 
     const SHOPPING_CATEGORIES = ['食品', '日用品', 'ペット用品', 'その他'];
-    const LINE_HELP_TEXT =
-      '📖 LINEでできること\n\n' +
-      '・「追加 アイテム名」→ 買い物リストに追加\n' +
-      '　（例：追加 牛乳）\n' +
-      '・「完了 アイテム名」→ そのアイテムを完了にする\n' +
-      '　（例：完了 牛乳）\n' +
-      '・「修正 ...」→ 直近の家計簿記録を修正する\n' +
-      '　（例：修正 金額を1200円に）\n' +
-      '・「ヘルプ」または「使い方」→ この説明を表示';
 
     const helpBox = document.getElementById('helpBox');
-    helpBox.textContent = LINE_HELP_TEXT;
+    helpBox.textContent = window.buildLineHelpText();
     document.getElementById('helpToggle').addEventListener('click', () => {
       const open = helpBox.style.display === 'block';
       helpBox.style.display = open ? 'none' : 'block';
