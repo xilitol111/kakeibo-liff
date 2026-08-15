@@ -616,11 +616,17 @@
     if (events.length === 0) return [];
     return buildEventsWithActuals_(events, await fetchEventActuals());
   }
-  // 期間内でまだevent_tagが付いていない取引だけを拾う（手動で付けた分・他イベントの分には触れない）
+  // 期間内でまだevent_tagが付いていない取引を、DBトリガー経由のAI判定キューに乗せる。
+  // ここで直接event_tagを設定するのではなく、occurred_atを「タッチ」して
+  // queue_event_tag_classificationトリガー（AFTER UPDATE OF occurred_at）を起動させる。
+  // 実際に関連する支出かどうかはevent-tag-classify Edge FunctionがGeminiで判定する
   async function backfillEventTagForRange_(eventName, startDate, endDate) {
     if (!startDate || !endDate) return;
-    unwrap(await sb().from('transactions').update({ event_tag: eventName })
-      .is('event_tag', null).gte('occurred_at', startDate).lte('occurred_at', endDate).select());
+    const rows = unwrap(await sb().from('transactions').select('id,occurred_at')
+      .is('event_tag', null).gte('occurred_at', startDate).lte('occurred_at', endDate));
+    for (const row of rows) {
+      await sb().from('transactions').update({ occurred_at: row.occurred_at }).eq('id', row.id);
+    }
   }
   async function saveEvent(payload) {
     if (!payload.name) throw new Error('イベント名を入力してください。');
