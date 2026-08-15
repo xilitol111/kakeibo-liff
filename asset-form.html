@@ -117,6 +117,7 @@
 
     <button id="btnGoRecord">＋ 新しい時点を記録</button>
     <div class="link-row">資産項目の一覧・編集は <a href="javascript:void(0)" id="linkGoPresets">こちら</a></div>
+    <div class="link-row">資産形成シミュレーションは <a href="javascript:void(0)" id="linkGoGoals">こちら</a></div>
   </div>
 
   <!-- ============ 記録画面 ============ -->
@@ -162,11 +163,31 @@
     <button class="ghost" id="btnBackToMain">メインに戻る</button>
   </div>
 
+  <!-- ============ 資産形成シミュレーション画面 ============ -->
+  <div id="viewGoals" class="view">
+    <h2>📈 資産形成シミュレーション</h2>
+    <p class="muted">純資産の実績推移から、直近の月平均増加額をもとに目標到達時期を単純な線形外挿で試算します（複利・利回りは考慮しない目安表示）。</p>
+
+    <div id="goalList"></div>
+
+    <div class="card">
+      <h4>新しい目標を追加</h4>
+      <label>目標名</label>
+      <input type="text" id="newGoalName" placeholder="例：住宅ローン完済後の目安" />
+      <label>目標金額</label>
+      <input type="number" id="newGoalAmount" placeholder="例：30000000" />
+      <button id="btnAddGoal">＋ 目標を追加</button>
+    </div>
+
+    <button class="ghost" id="btnBackToMainFromGoals">メインに戻る</button>
+  </div>
+
   <script>
     const CATEGORY_COLORS = { '預金': 's1', '証券': 's2', '保険': 's4', '不動産': 's6', 'その他': 's5' };
     function colorVar(cat) { return 'var(--' + (CATEGORY_COLORS[cat] || 's5') + ')'; }
     function dotColorFor(item) { return (item.item_type === 'liability' || item.itemType === 'liability') ? 'var(--liab)' : colorVar(item.category); }
     function yen(n) { return '¥' + Number(n || 0).toLocaleString('ja-JP'); }
+    function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
     let screenData = null;
 
@@ -396,13 +417,99 @@
       renderPresetList();
     }
 
+    function buildGoalChartSvg_(goal, netWorthHistory) {
+      if (!netWorthHistory || netWorthHistory.length < 2) {
+        return '<p class="muted">推移データが2時点以上たまると表示されます。</p>';
+      }
+      const W = 320, H = 120, padL = 20, padR = 14, padT = 16, baseY = 98;
+      const values = netWorthHistory.map((d) => d.netWorth);
+      const target = goal.targetAmount;
+      const maxVal = Math.max(target, ...values);
+      const minVal = Math.min(0, ...values);
+      const range = (maxVal - minVal) || 1;
+      const yForVal = (v) => padT + (1 - (v - minVal) / range) * (baseY - padT);
+      const n = netWorthHistory.length;
+      const actualRightX = padL + (W - padL - padR) * 0.62;
+      const xForIndex = (i) => padL + (n > 1 ? (i / (n - 1)) * (actualRightX - padL) : 0);
+      const actualPts = netWorthHistory.map((d, i) => xForIndex(i) + ',' + yForVal(d.netWorth)).join(' ');
+      const targetY = yForVal(target);
+
+      let dashed = '', endCircle = '', endLabel = '';
+      if (goal.status === 'projected') {
+        const lastX = xForIndex(n - 1), lastY = yForVal(values[n - 1]);
+        const projX = W - padR;
+        dashed = '<polyline points="' + lastX + ',' + lastY + ' ' + projX + ',' + targetY + '" fill="none" stroke="var(--s1)" stroke-width="2" stroke-dasharray="4 4" stroke-linecap="round"/>';
+        endCircle = '<circle cx="' + projX + '" cy="' + targetY + '" r="3.5" fill="var(--accent)"/>';
+        endLabel = '<text x="' + projX + '" y="' + (targetY - 8) + '" text-anchor="end" font-size="9" font-weight="700" fill="var(--accent-ink)">' + goal.reachYear + '年' + goal.reachMonth + '月頃</text>';
+      }
+
+      return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="純資産の実績推移と目標到達予測">' +
+        '<line x1="' + padL + '" y1="' + targetY + '" x2="' + (W - padR) + '" y2="' + targetY + '" stroke="var(--grid)" stroke-width="1" stroke-dasharray="2 3"/>' +
+        '<text x="' + (padL + 2) + '" y="' + (targetY - 4) + '" font-size="8.5" fill="var(--muted)">目標 ' + yen(target) + '</text>' +
+        '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + baseY + '" stroke="var(--axis)" stroke-width="1"/>' +
+        '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--axis)" stroke-width="1"/>' +
+        '<polyline points="' + actualPts + '" fill="none" stroke="var(--s1)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+        dashed + endCircle + endLabel +
+        '</svg>';
+    }
+
+    function goalStatusHtml(g) {
+      if (g.status === 'reached') return '<p style="font-size:12px; color:var(--accent-ink); margin:6px 0 0;">既に目標金額へ到達しています🎉</p>';
+      if (g.status === 'no_projection') return '<p style="font-size:12px; color:var(--muted); margin:6px 0 0;">純資産が増加傾向にないため試算できません（直近の推移から算出）。</p>';
+      const monthly = screenData.monthlyAvgIncrease != null ? yen(Math.round(screenData.monthlyAvgIncrease)) : '-';
+      return '<p style="font-size:12px; color:var(--ink); margin:6px 0 0;">直近の月平均増加額（約' + monthly + '／月）が続いた場合、<strong style="color:var(--accent-ink);">' + g.reachYear + '年' + g.reachMonth + '月頃</strong>に目標へ到達する見込みです。</p>';
+    }
+
+    function renderGoalsView() {
+      const el = document.getElementById('goalList');
+      const goals = screenData.goals || [];
+      if (goals.length === 0) {
+        el.innerHTML = '<p class="muted">まだ目標が登録されていません。下のフォームから追加してください。</p>';
+        return;
+      }
+      el.innerHTML = goals.map((g) =>
+        '<div class="card"><h4>目標：' + esc(g.name) + '　' + yen(g.targetAmount) + '</h4>' +
+        buildGoalChartSvg_(g, screenData.netWorthHistory) +
+        goalStatusHtml(g) +
+        '<button class="ghost small" data-remove-goal="' + g.id + '" style="margin-top:10px;">この目標を削除</button></div>'
+      ).join('');
+      el.querySelectorAll('[data-remove-goal]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('この目標を削除しますか？')) return;
+          await window.kakeiboData.removeAssetGoal(btn.getAttribute('data-remove-goal'));
+          screenData = await window.kakeiboData.getAssetScreenInitialData();
+          renderGoalsView();
+        });
+      });
+    }
+
+    function openGoalsView() {
+      renderGoalsView();
+      showView('viewGoals');
+    }
+
+    async function addGoal() {
+      const name = document.getElementById('newGoalName').value.trim();
+      const targetAmount = document.getElementById('newGoalAmount').value;
+      if (!name) { alert('目標名を入力してください'); return; }
+      if (!targetAmount || Number(targetAmount) <= 0) { alert('目標金額を入力してください'); return; }
+      await window.kakeiboData.saveAssetGoal({ name, targetAmount });
+      document.getElementById('newGoalName').value = '';
+      document.getElementById('newGoalAmount').value = '';
+      screenData = await window.kakeiboData.getAssetScreenInitialData();
+      renderGoalsView();
+    }
+
     document.getElementById('btnGoRecord').addEventListener('click', openRecordView);
     document.getElementById('linkGoPresets').addEventListener('click', openPresetsView);
     document.getElementById('linkGoPresetsFromRecord').addEventListener('click', openPresetsView);
+    document.getElementById('linkGoGoals').addEventListener('click', openGoalsView);
     document.getElementById('btnCancelRecord').addEventListener('click', () => showView('viewMain'));
     document.getElementById('btnBackToMain').addEventListener('click', () => showView('viewMain'));
+    document.getElementById('btnBackToMainFromGoals').addEventListener('click', () => showView('viewMain'));
     document.getElementById('btnSaveSnapshot').addEventListener('click', saveSnapshot);
     document.getElementById('btnAddItem').addEventListener('click', addPresetItem);
+    document.getElementById('btnAddGoal').addEventListener('click', addGoal);
     document.getElementById('recordItemList').addEventListener('input', (e) => {
       if (e.target.classList.contains('amount-box')) updateSaveTotalHint();
     });

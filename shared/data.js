@@ -1029,8 +1029,41 @@
     return byDate;
   }
 
+  async function fetchAssetGoals() {
+    return unwrap(await sb().from('asset_goals').select('*').order('created_at', { ascending: true }));
+  }
+  async function insertAssetGoal(record) {
+    return unwrap(await sb().from('asset_goals').insert(record).select())[0];
+  }
+  async function removeAssetGoal(id) {
+    unwrap(await sb().from('asset_goals').delete().eq('id', id));
+  }
+  async function saveAssetGoal(payload) {
+    return insertAssetGoal({ name: payload.name, target_amount: Number(payload.targetAmount) });
+  }
+
+  // 直近の純資産推移（最初と最後の2点）から月あたりの平均増加額を算出する単純な線形モデル。
+  // 複利・利回りは考慮しない（精度より分かりやすさを優先、資産形成シミュレーションで使用）
+  function computeMonthlyNetWorthTrend_(netWorthHistory) {
+    if (!netWorthHistory || netWorthHistory.length < 2) return null;
+    const first = netWorthHistory[0], last = netWorthHistory[netWorthHistory.length - 1];
+    const days = (new Date(last.date + 'T00:00:00') - new Date(first.date + 'T00:00:00')) / 86400000;
+    const months = days / 30.44;
+    if (months <= 0) return null;
+    return (last.netWorth - first.netWorth) / months;
+  }
+  function projectGoalReach_(goal, latestNetWorth, monthlyAvgIncrease) {
+    if (latestNetWorth >= goal.target_amount) return { status: 'reached' };
+    if (monthlyAvgIncrease === null || monthlyAvgIncrease <= 0) return { status: 'no_projection' };
+    const remaining = goal.target_amount - latestNetWorth;
+    const monthsToGoal = remaining / monthlyAvgIncrease;
+    const reachDate = new Date();
+    reachDate.setMonth(reachDate.getMonth() + Math.ceil(monthsToGoal));
+    return { status: 'projected', monthsToGoal, reachYear: reachDate.getFullYear(), reachMonth: reachDate.getMonth() + 1 };
+  }
+
   async function getAssetScreenInitialData() {
-    const [items, snapshotRows] = await Promise.all([fetchAssetItems(false), fetchAllAssetSnapshots()]);
+    const [items, snapshotRows, goalsRaw] = await Promise.all([fetchAssetItems(false), fetchAllAssetSnapshots(), fetchAssetGoals()]);
     const byDate = buildAssetDateGroups_(snapshotRows);
     const dates = Object.keys(byDate).sort();
     const dateSummaries = dates.map((d) => {
@@ -1051,10 +1084,19 @@
     const latestAmountByItem = {};
     if (latest) latest.entries.forEach((e) => { latestAmountByItem[e.assetItemId] = e.amount; });
 
+    const netWorthHistory = dateSummaries.slice(-12).map((d) => ({ date: d.date, netWorth: d.netWorth }));
+    const monthlyAvgIncrease = computeMonthlyNetWorthTrend_(netWorthHistory);
+    const latestNetWorth = latest ? latest.netWorth : 0;
+    const goals = goalsRaw.map((g) => Object.assign(
+      { id: g.id, name: g.name, targetAmount: g.target_amount },
+      projectGoalReach_(g, latestNetWorth, monthlyAvgIncrease)
+    ));
+
     return {
       items,
       dateSummariesDesc: dateSummaries.slice().reverse(),
-      latest, previous, trend, latestAmountByItem
+      latest, previous, trend, latestAmountByItem,
+      netWorthHistory, monthlyAvgIncrease, goals
     };
   }
 
@@ -1096,6 +1138,7 @@
     // shopping list
     getShoppingScreenData, addShoppingItemFromLiff, toggleShoppingItemPurchased, removeShoppingItem,
     // asset management
-    getAssetScreenInitialData, saveAssetItem, deactivateAssetItem, saveAssetSnapshot, fetchAssetItems
+    getAssetScreenInitialData, saveAssetItem, deactivateAssetItem, saveAssetSnapshot, fetchAssetItems,
+    saveAssetGoal, removeAssetGoal
   };
 })();
