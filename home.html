@@ -16,6 +16,7 @@
       --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
       --accent-soft2: #F2F7F4; --danger: #C0392B; --success-bg: #E4F7EC;
       --warn-bg: #FCEFE4; --warn-border: #E8C39E; --warn-ink: #A85C1C;
+      --crit-bg: #FCEAEA; --crit-border: #EEB4AE; --crit-ink: #B23227;
       --info-bg: #E8EEFB; --info-border: #B9CCF0; --info-ink: #2A4E9E; --info-ink2: #3A4E7A;
       --switch-bg: #F2FBF6; --switch-border: #B9EBCD; --switch-ink: #5B9E78;
     }
@@ -25,6 +26,7 @@
         --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
         --accent-soft2: #17231C; --danger: #E5766A; --success-bg: #163627;
         --warn-bg: #2E2114; --warn-border: #4A3420; --warn-ink: #E3A15C;
+        --crit-bg: #301715; --crit-border: #5C2A24; --crit-ink: #E5766A;
         --info-bg: #1A2436; --info-border: #2E4066; --info-ink: #7FA0E8; --info-ink2: #9DB4E8;
         --switch-bg: #14231A; --switch-border: #2B4A38; --switch-ink: #6FCF9A;
       }
@@ -60,8 +62,13 @@
     .autoImportBanner a.link { color: var(--info-ink); font-size: 12px; margin-top: 6px; }
     .settlementBanner { display: none; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
     .settlementBanner a { display: block; color: var(--warn-ink); font-weight: bold; font-size: 13px; text-decoration: none; }
-    .budgetOverBanner { display: none; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
-    .budgetOverBanner a { display: block; color: var(--warn-ink); font-weight: bold; font-size: 13px; text-decoration: none; }
+    .budgetAlertBanner { display: block; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; text-decoration: none; }
+    .budgetAlertBanner.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+    .budgetAlertBanner.warn strong, .budgetAlertBanner.warn .detail { color: var(--warn-ink); }
+    .budgetAlertBanner.crit { background: var(--crit-bg); border: 1px solid var(--crit-border); }
+    .budgetAlertBanner.crit strong, .budgetAlertBanner.crit .detail { color: var(--crit-ink); }
+    .budgetAlertBanner strong { display: block; font-size: 13px; }
+    .budgetAlertBanner .detail { font-size: 11.5px; margin-top: 2px; }
     .paceBox { border-radius: 10px; padding: 9px 11px; margin-top: 10px; font-size: 11.5px; }
     .paceBox.good { background: var(--success-bg); color: var(--accent-ink); }
     .paceBox.warn { background: var(--warn-bg); color: var(--warn-ink); }
@@ -119,7 +126,7 @@
     <div class="breakdown" id="reviewBannerBreakdown"></div>
   </a>
   <div class="settlementBanner" id="settlementBanner"><a id="settlementBannerLink" href="#"></a></div>
-  <div class="budgetOverBanner" id="budgetOverBanner"><a id="budgetOverBannerLink" href="#"></a></div>
+  <div id="budgetAlertBanners"></div>
 
   <div class="pagerHead">
     <div class="pagerTabs">
@@ -538,13 +545,22 @@
     }
 
     function renderBudgetOverBanner(data) {
-      const banner = document.getElementById('budgetOverBanner');
-      const pct = data.budget && data.budget.total > 0 ? data.budget.pct : 0;
-      if (data.yearMonth !== TODAY_YEAR_MONTH || pct <= 100) { banner.style.display = 'none'; return; }
-      const link = document.getElementById('budgetOverBannerLink');
-      link.href = './budget-form.html';
-      link.textContent = '⚠ 今月の予算を' + (pct - 100) + '%超過しています（' + fmtYen(data.budget.actual) + ' / ' + fmtYen(data.budget.total) + '）。確認する ›';
-      banner.style.display = 'block';
+      const container = document.getElementById('budgetAlertBanners');
+      if (data.yearMonth !== TODAY_YEAR_MONTH || !data.categories) { container.innerHTML = ''; return; }
+      const alerts = data.categories
+        .filter((c) => c.budget != null && c.budget > 0 && c.pct != null && c.pct >= 90)
+        .sort((a, b) => b.pct - a.pct);
+      if (alerts.length === 0) { container.innerHTML = ''; return; }
+      container.innerHTML = alerts.map((c) => {
+        const over = c.pct > 100;
+        const cls = over ? 'crit' : 'warn';
+        const icon = over ? '🔴' : '🟡';
+        const headline = over
+          ? c.category + 'が予算を超過'
+          : c.category + 'が' + c.pct + '%到達';
+        const detail = '予算' + fmtYen(c.budget) + 'に対し実績' + fmtYen(c.actual) + (over ? '（+' + (c.pct - 100) + '%）' : '');
+        return '<a class="budgetAlertBanner ' + cls + '" href="./budget-form.html">' + icon + ' <strong style="display:inline">' + headline + '</strong><div class="detail">' + detail + '</div></a>';
+      }).join('');
     }
 
     function initHome() {
