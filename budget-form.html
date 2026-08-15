@@ -90,6 +90,15 @@
     .eventNew button { margin-top: 10px; }
     .eventActions { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
     .eventActions .annualInputRow { flex: 1; margin-top: 0; }
+    .scopeBadge { display: inline-block; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 100px; margin-left: 6px; white-space: nowrap; }
+    .scopeBadge.dedicated { background: var(--accent-soft); color: var(--accent-ink); }
+    .scopeBadge.category { background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-border); }
+    .eventDateRow { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .eventDateRow label { margin: 0; font-size: 11.5px; font-weight: normal; color: var(--faint); white-space: nowrap; }
+    .eventDateRow input { margin: 0; font-size: 13px; }
+    .eventScopeRow { margin-top: 8px; }
+    .eventScopeRow select { font-size: 13px; }
+    .categoryNote { font-size: 11px; color: var(--faint); margin-top: 8px; }
     .eventDeleteBtn { width: auto; margin-top: 0; padding: 8px 12px; font-size: 12px; border-color: var(--danger); color: var(--danger); }
     .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 6px; }
     @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
@@ -121,8 +130,20 @@
   <div class="eventNew">
     <label>新しいイベント名</label>
     <input type="text" id="newEventName" placeholder="例：夏の帰省" />
-    <label>予算（円・任意）</label>
+    <label>種別</label>
+    <select id="newEventScope">
+      <option value="dedicated">大規模（専用の予算枠を持つ・カテゴリ予算からは除外）</option>
+      <option value="category">小規模（通常のカテゴリ予算に含める・予算枠なし）</option>
+    </select>
+    <label id="newEventBudgetLabel">予算（円・任意）</label>
     <input type="number" id="newEventBudget" placeholder="空欄可" />
+    <label>期間（任意）</label>
+    <p class="sectionNote" style="margin-top:-2px;">入力すると、期間内で未タグ付けの取引に自動でこのイベントを割り当てます（既にタグが付いている取引は変更しません）。</p>
+    <div class="eventDateRow">
+      <input type="date" id="newEventStart" />
+      <span>〜</span>
+      <input type="date" id="newEventEnd" />
+    </div>
     <button class="ghost" id="addEventBtn" type="button">＋ イベントを作成</button>
   </div>
 
@@ -274,23 +295,39 @@
         return;
       }
       el.innerHTML = eventList.map((ev) => {
+        const scope = ev.budgetScope || 'dedicated';
+        const scopeLabel = scope === 'dedicated' ? '大規模' : '小規模';
         const actualText = ev.pct !== null
           ? fmtYen(ev.actual) + ' / ' + fmtYen(ev.budget) + '（' + ev.pct + '%）'
-          : fmtYen(ev.actual) + '（予算未設定）';
+          : fmtYen(ev.actual) + (scope === 'dedicated' ? '（予算未設定）' : '');
         return (
           '<div class="annualCat" data-event-id="' + ev.id + '">' +
-            '<div class="catHead"><span class="catName">' + ev.name + '</span>' +
+            '<div class="catHead"><span class="catName">' + ev.name +
+              '<span class="scopeBadge ' + scope + '">' + scopeLabel + '</span></span>' +
               '<span class="catActual' + (ev.pct > 100 ? ' over' : '') + '">' + actualText + '</span></div>' +
             (ev.pct !== null
               ? '<div class="progress-track"><div class="progress-fill' + (ev.pct > 100 ? ' over' : '') + '" style="width:' + Math.min(ev.pct, 100) + '%"></div></div>'
               : '') +
             '<div class="eventActions">' +
-              '<div class="annualInputRow">' +
-                '<label>予算</label>' +
-                '<input type="number" class="eventBudgetInput" data-id="' + ev.id + '" value="' + (ev.budget != null ? ev.budget : '') + '" />' +
-                '<span class="savedTick">✓</span>' +
-              '</div>' +
+              (scope === 'dedicated'
+                ? '<div class="annualInputRow">' +
+                    '<label>予算</label>' +
+                    '<input type="number" class="eventBudgetInput" data-id="' + ev.id + '" value="' + (ev.budget != null ? ev.budget : '') + '" />' +
+                    '<span class="savedTick">✓</span>' +
+                  '</div>'
+                : '<div class="categoryNote">カテゴリ予算の実績に含まれます（専用予算枠なし）</div>') +
               '<button type="button" class="ghost eventDeleteBtn" data-id="' + ev.id + '">削除</button>' +
+            '</div>' +
+            '<div class="eventScopeRow">' +
+              '<select class="eventScopeInput" data-id="' + ev.id + '">' +
+                '<option value="dedicated"' + (scope === 'dedicated' ? ' selected' : '') + '>大規模（専用予算枠）</option>' +
+                '<option value="category"' + (scope === 'category' ? ' selected' : '') + '>小規模（カテゴリ予算に含む）</option>' +
+              '</select>' +
+            '</div>' +
+            '<div class="eventDateRow">' +
+              '<input type="date" class="eventStartInput" data-id="' + ev.id + '" value="' + (ev.startDate || '') + '" />' +
+              '<span>〜</span>' +
+              '<input type="date" class="eventEndInput" data-id="' + ev.id + '" value="' + (ev.endDate || '') + '" />' +
             '</div>' +
           '</div>'
         );
@@ -302,13 +339,27 @@
       catch (err) { setStatus('エラー: ' + err.message, 'err'); }
     }
 
+    function collectEventRowPayload_(id) {
+      const row = document.querySelector('.annualCat[data-event-id="' + id + '"]');
+      const ev = eventList.find((e) => e.id === id);
+      const budgetInput = row.querySelector('.eventBudgetInput');
+      return {
+        id: id,
+        name: ev.name,
+        budgetScope: row.querySelector('.eventScopeInput').value,
+        budgetAmount: budgetInput ? budgetInput.value : (ev.budget != null ? ev.budget : ''),
+        startDate: row.querySelector('.eventStartInput').value || null,
+        endDate: row.querySelector('.eventEndInput').value || null
+      };
+    }
+
     document.getElementById('eventList').addEventListener('change', async (e) => {
-      const input = e.target.closest('.eventBudgetInput');
+      const input = e.target.closest('.eventBudgetInput, .eventScopeInput, .eventStartInput, .eventEndInput');
       if (!input) return;
       const id = input.dataset.id;
       try {
-        eventList = await window.kakeiboData.saveEvent({ id: id, name: eventList.find((ev) => ev.id === id).name, budgetAmount: input.value });
-        renderEventList();
+        await window.kakeiboData.saveEvent(collectEventRowPayload_(id));
+        await loadEvents();
         const tick = document.querySelector('.annualCat[data-event-id="' + id + '"] .savedTick');
         if (tick) { tick.classList.add('show'); setTimeout(() => tick.classList.remove('show'), 1200); }
       } catch (err) {
@@ -329,14 +380,35 @@
       }
     });
 
+    const newEventScopeSelect = document.getElementById('newEventScope');
+    function syncNewEventBudgetVisibility() {
+      const isCategory = newEventScopeSelect.value === 'category';
+      document.getElementById('newEventBudgetLabel').style.display = isCategory ? 'none' : '';
+      document.getElementById('newEventBudget').style.display = isCategory ? 'none' : '';
+    }
+    newEventScopeSelect.addEventListener('change', syncNewEventBudgetVisibility);
+    syncNewEventBudgetVisibility();
+
     document.getElementById('addEventBtn').addEventListener('click', async () => {
       const nameInput = document.getElementById('newEventName');
       const budgetInput = document.getElementById('newEventBudget');
+      const startInput = document.getElementById('newEventStart');
+      const endInput = document.getElementById('newEventEnd');
       const name = nameInput.value.trim();
       if (!name) { setStatus('イベント名を入力してください', 'err'); return; }
+      if ((startInput.value && !endInput.value) || (!startInput.value && endInput.value)) {
+        setStatus('期間は開始日・終了日をどちらも入力してください', 'err'); return;
+      }
       try {
-        await window.kakeiboData.saveEvent({ id: null, name: name, budgetAmount: budgetInput.value });
-        nameInput.value = ''; budgetInput.value = '';
+        await window.kakeiboData.saveEvent({
+          id: null, name: name,
+          budgetScope: newEventScopeSelect.value,
+          budgetAmount: budgetInput.value,
+          startDate: startInput.value || null,
+          endDate: endInput.value || null
+        });
+        nameInput.value = ''; budgetInput.value = ''; startInput.value = ''; endInput.value = '';
+        newEventScopeSelect.value = 'dedicated'; syncNewEventBudgetVisibility();
         setStatus('✓ イベント「' + name + '」を作成しました', 'ok');
         loadEvents();
       } catch (err) {

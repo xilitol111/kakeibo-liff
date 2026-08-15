@@ -491,12 +491,21 @@
     return fmt(d, 'yyyy-MM-dd');
   }
 
+  async function fetchDedicatedEventNames_() {
+    const rows = unwrap(await sb().from('events').select('name').eq('budget_scope', 'dedicated'));
+    return new Set(rows.map((r) => r.name));
+  }
+
   async function getBudgetsForMonth(yearMonth) {
-    const [budgetRows, actualRows, ratioRows] = await Promise.all([
+    const [budgetRows, allRows, ratioRows, dedicatedNames] = await Promise.all([
       fetchBudgets(yearMonth),
-      sb().from('transactions').select('category,amount,is_reimbursement').gte('occurred_at', yearMonth).lt('occurred_at', nextYearMonth_(yearMonth)).is('event_tag', null).then(unwrap),
-      sb().from('settlement_ratios').select('*').lte('effective_from', yearMonth).order('effective_from', { ascending: false }).limit(1).then(unwrap)
+      sb().from('transactions').select('category,amount,is_reimbursement,event_tag').gte('occurred_at', yearMonth).lt('occurred_at', nextYearMonth_(yearMonth)).then(unwrap),
+      sb().from('settlement_ratios').select('*').lte('effective_from', yearMonth).order('effective_from', { ascending: false }).limit(1).then(unwrap),
+      fetchDedicatedEventNames_()
     ]);
+    // カテゴリ予算の実績は「日常系（event_tagなし）」＋「小規模イベント（category scope）」を含む。
+    // 大規模イベント（dedicated scope）だけを除外する
+    const actualRows = allRows.filter((row) => !row.event_tag || !dedicatedNames.has(row.event_tag));
     const budgetMap = {}; budgetRows.forEach((row) => { budgetMap[row.category] = row.budget_amount; });
     const actualMap = {}, actualGrossMap = {};
     actualRows.forEach((row) => {
@@ -552,11 +561,13 @@
   }
 
   async function fetchYearlyBudgetInputs_(year) {
-    const [categoryRows, budgetRows, ratioRows] = await Promise.all([
-      sb().from('transactions').select('occurred_at,category,amount,is_reimbursement').gte('occurred_at', `${year}-01-01`).lt('occurred_at', `${Number(year) + 1}-01-01`).is('event_tag', null).then(unwrap),
+    const [allRows, budgetRows, ratioRows, dedicatedNames] = await Promise.all([
+      sb().from('transactions').select('occurred_at,category,amount,is_reimbursement,event_tag').gte('occurred_at', `${year}-01-01`).lt('occurred_at', `${Number(year) + 1}-01-01`).then(unwrap),
       sb().from('budgets').select('*').gte('year_month', `${year}-01-01`).lte('year_month', `${year}-12-01`).then(unwrap),
-      sb().from('settlement_ratios').select('*').lte('effective_from', `${year}-01-01`).order('effective_from', { ascending: false }).limit(1).then(unwrap)
+      sb().from('settlement_ratios').select('*').lte('effective_from', `${year}-01-01`).order('effective_from', { ascending: false }).limit(1).then(unwrap),
+      fetchDedicatedEventNames_()
     ]);
+    const categoryRows = allRows.filter((row) => !row.event_tag || !dedicatedNames.has(row.event_tag));
     return { categoryRows, budgetRows, ratioRows };
   }
   async function getYearlyBudgetSummary(year) {
@@ -592,7 +603,11 @@
     actualRows.forEach((row) => { actualByName[row.event_tag] = (actualByName[row.event_tag] || 0) + row.amount; });
     return events.map((e) => {
       const actual = actualByName[e.name] || 0;
-      return { id: e.id, name: e.name, budget: e.budget_amount, actual, pct: (e.budget_amount != null && e.budget_amount > 0) ? Math.round((actual / e.budget_amount) * 100) : null };
+      return {
+        id: e.id, name: e.name, budget: e.budget_amount, actual,
+        pct: (e.budget_amount != null && e.budget_amount > 0) ? Math.round((actual / e.budget_amount) * 100) : null,
+        budgetScope: e.budget_scope || 'dedicated', startDate: e.start_date, endDate: e.end_date
+      };
     });
   }
   async function listEventNames() { return (await fetchAllEvents()).map((e) => e.name); }
@@ -601,10 +616,25 @@
     if (events.length === 0) return [];
     return buildEventsWithActuals_(events, await fetchEventActuals());
   }
+  // 期間内でまだevent_tagが付いていない取引だけを拾う（手動で付けた分・他イベントの分には触れない）
+  async function backfillEventTagForRange_(eventName, startDate, endDate) {
+    if (!startDate || !endDate) return;
+    unwrap(await sb().from('transactions').update({ event_tag: eventName })
+      .is('event_tag', null).gte('occurred_at', startDate).lte('occurred_at', endDate).select());
+  }
   async function saveEvent(payload) {
     if (!payload.name) throw new Error('イベント名を入力してください。');
-    const record = { name: payload.name, budget_amount: isFilled_(payload.budgetAmount) ? Number(payload.budgetAmount) : null };
-    return payload.id ? updateEvent(payload.id, record) : insertEvent(record);
+    const budgetScope = payload.budgetScope === 'category' ? 'category' : 'dedicated';
+    const record = {
+      name: payload.name,
+      budget_amount: (budgetScope === 'dedicated' && isFilled_(payload.budgetAmount)) ? Number(payload.budgetAmount) : null,
+      budget_scope: budgetScope,
+      start_date: payload.startDate || null,
+      end_date: payload.endDate || null
+    };
+    const saved = payload.id ? await updateEvent(payload.id, record) : await insertEvent(record);
+    await backfillEventTagForRange_(saved.name, record.start_date, record.end_date);
+    return saved;
   }
   async function removeEvent(id) { return deleteEvent(id); }
 
