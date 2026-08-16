@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>レシピ</title>
+  <script>window.KAKEIBO_LIFF_ID = '';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); max-width: 480px; margin: 0 auto; }
+    a.backLink { font-size: 12px; color: var(--muted); text-decoration: none; }
+    .pageHead { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 14px; }
+    .pageHead h2 { margin: 0; font-size: 18px; }
+    .addBtn { background: var(--accent); color: #fff; border: none; border-radius: 100px; width: 34px; height: 34px; font-size: 18px; font-weight: bold; line-height: 1; text-decoration: none; display: flex; align-items: center; justify-content: center; }
+    .searchBox { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; font-size: 13px; background: var(--panel); color: var(--ink); margin-bottom: 14px; }
+    .recipeCard { display: flex; justify-content: space-between; align-items: center; padding: 13px 4px; border-bottom: 1px solid var(--border); text-decoration: none; color: inherit; }
+    .recipeCard:active { background: var(--accent-soft); }
+    .recipeCard .name { font-size: 14.5px; font-weight: 600; }
+    .recipeCard .meta { font-size: 11px; color: var(--faint); margin-top: 3px; }
+    .recipeCard .chev { color: var(--faint); font-size: 14px; }
+    .empty { color: var(--faint); text-align: center; padding: 30px 0; font-size: 13px; }
+    .skel { background: linear-gradient(90deg, var(--accent-soft) 25%, var(--accent-soft2) 37%, var(--accent-soft) 63%); background-size: 400% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 6px; height: 46px; margin-bottom: 4px; }
+    @keyframes skel-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./shopping-list.html">← 買い物リストに戻る</a>
+  <div class="pageHead">
+    <h2>🍳 レシピ</h2>
+    <a class="addBtn" href="./recipe-form.html">＋</a>
+  </div>
+  <input class="searchBox" id="searchBox" placeholder="料理名で検索" />
+  <div id="list">
+    <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+  </div>
+
+  <script>
+    let recipes = [];
+
+    function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function fmtDate(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function render() {
+      const q = document.getElementById('searchBox').value.trim();
+      const filtered = q ? recipes.filter((r) => r.name.includes(q)) : recipes;
+      const el = document.getElementById('list');
+      if (filtered.length === 0) {
+        el.innerHTML = '<div class="empty">' + (q ? '該当するレシピがありません' : 'レシピがまだありません。右上の＋から登録できます') + '</div>';
+        return;
+      }
+      el.innerHTML = filtered.map((r) =>
+        '<a class="recipeCard" href="./recipe-detail.html?id=' + r.id + '">' +
+          '<div>' +
+            '<div class="name">' + esc(r.name) + '</div>' +
+            '<div class="meta">材料' + r.ingredientCount + '点 ・ ' + fmtDate(r.createdAt) + '登録</div>' +
+          '</div>' +
+          '<div class="chev">›</div>' +
+        '</a>'
+      ).join('');
+    }
+
+    document.getElementById('searchBox').addEventListener('input', render);
+
+    (async () => {
+      const ok = await window.kakeiboReady;
+      if (!ok) { document.getElementById('list').innerHTML = '<div class="empty">ログインに失敗しました。LINEアプリから開き直してください。</div>'; return; }
+      try {
+        recipes = await window.kakeiboData.fetchRecipes();
+        render();
+      } catch (err) {
+        document.getElementById('list').innerHTML = '<div class="empty">読み込みエラー: ' + esc(err.message) + '</div>';
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>レシピ詳細</title>
+  <script>window.KAKEIBO_LIFF_ID = '';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --info-bg: #E8EEFB; --info-border: #B9CCF0; --info-ink: #2A4E9E;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --info-bg: #1A2436; --info-border: #2E4066; --info-ink: #7FA0E8;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; padding: 16px 16px 90px; color: var(--ink); background: var(--bg); max-width: 480px; margin: 0 auto; }
+    a.backLink { font-size: 12px; color: var(--muted); text-decoration: none; display: inline-block; margin-bottom: 10px; }
+    .detailTtl { font-size: 19px; font-weight: bold; margin-bottom: 4px; }
+    .sourceLink { font-size: 11.5px; color: var(--info-ink); text-decoration: none; word-break: break-all; }
+    h3.sectionTtl { font-size: 12px; font-weight: bold; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin: 22px 0 8px; }
+    .ingList { display: flex; flex-direction: column; gap: 2px; }
+    .ingRow { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--border); }
+    .ingRow:last-child { border-bottom: none; }
+    .ingRow input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; }
+    .ingRow .iname { font-size: 13.5px; flex: 1; }
+    .ingRow .iamt { font-size: 12px; color: var(--muted); }
+    .stepList { padding-left: 20px; margin: 0; display: flex; flex-direction: column; gap: 10px; white-space: pre-wrap; }
+    .stepText { font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
+    .stickyBar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--bg); padding: 12px 16px; border-top: 1px solid var(--border); max-width: 480px; margin: 0 auto; }
+    .primaryBtn { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 13px; font-size: 14px; font-weight: bold; }
+    .primaryBtn:disabled { background: var(--border); color: var(--faint); }
+    .ghostRow { display: flex; gap: 8px; margin-top: 10px; }
+    .ghostBtn { flex: 1; background: transparent; border: 1.5px solid var(--border); color: var(--muted); border-radius: 10px; padding: 10px; font-size: 12.5px; font-weight: bold; }
+    .ghostBtn.danger { border-color: #EEB4AE; color: var(--danger); }
+    .empty { color: var(--faint); text-align: center; padding: 30px 0; font-size: 13px; }
+    .status { font-size: 12px; margin-top: 8px; text-align: center; }
+    .status.err { color: var(--danger); }
+    .status.ok { color: var(--accent-ink); }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./recipe-list.html">‹ 一覧に戻る</a>
+  <div id="content"><div class="empty">読み込み中...</div></div>
+
+  <script>
+    function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function qs(name) { return new URLSearchParams(location.search).get(name); }
+
+    let recipe = null;
+
+    function render() {
+      const el = document.getElementById('content');
+      el.innerHTML =
+        '<div class="detailTtl">' + esc(recipe.name) + '</div>' +
+        (recipe.sourceUrl ? '<a class="sourceLink" href="' + esc(recipe.sourceUrl) + '" target="_blank">出典: ' + esc(recipe.sourceUrl) + '</a>' : '') +
+        '<h3 class="sectionTtl">材料（買い物リストに追加するものを選択）</h3>' +
+        '<div class="ingList">' +
+          recipe.ingredients.map((i, idx) =>
+            '<label class="ingRow">' +
+              '<input type="checkbox" data-idx="' + idx + '" checked />' +
+              '<span class="iname">' + esc(i.name) + '</span>' +
+              '<span class="iamt">' + esc(i.quantity || '') + '</span>' +
+            '</label>'
+          ).join('') +
+        '</div>' +
+        '<h3 class="sectionTtl">作り方</h3>' +
+        '<div class="stepText">' + esc(recipe.stepsText || '（未登録）') + '</div>' +
+        '<div class="status" id="status"></div>' +
+        '<div class="ghostRow" style="margin-top:24px;">' +
+          '<a class="ghostBtn" href="./recipe-form.html?id=' + recipe.id + '" style="text-decoration:none; text-align:center;">編集</a>' +
+          '<button class="ghostBtn danger" id="deleteBtn">削除</button>' +
+        '</div>' +
+        '<div style="height:70px"></div>' +
+        '<div class="stickyBar"><button class="primaryBtn" id="addToListBtn">選択した材料を買い物リストに追加</button></div>';
+
+      updateAddBtnLabel();
+      el.querySelectorAll('input[type="checkbox"]').forEach((cb) => cb.addEventListener('change', updateAddBtnLabel));
+      document.getElementById('addToListBtn').addEventListener('click', addSelectedToShoppingList);
+      document.getElementById('deleteBtn').addEventListener('click', removeRecipe);
+    }
+
+    function selectedIngredients() {
+      return Array.from(document.querySelectorAll('#content input[type="checkbox"]:checked'))
+        .map((cb) => recipe.ingredients[Number(cb.dataset.idx)].name);
+    }
+
+    function updateAddBtnLabel() {
+      const n = selectedIngredients().length;
+      const btn = document.getElementById('addToListBtn');
+      btn.textContent = '選択した材料を買い物リストに追加（' + n + '件）';
+      btn.disabled = n === 0;
+    }
+
+    async function addSelectedToShoppingList() {
+      const names = selectedIngredients();
+      if (names.length === 0) return;
+      const btn = document.getElementById('addToListBtn');
+      const status = document.getElementById('status');
+      btn.disabled = true;
+      status.textContent = '追加中...';
+      status.className = 'status';
+      try {
+        await window.kakeiboData.addRecipeIngredientsToShoppingList(names);
+        status.textContent = '✓ 買い物リストに追加しました';
+        status.className = 'status ok';
+      } catch (err) {
+        status.textContent = 'エラー: ' + err.message;
+        status.className = 'status err';
+      } finally {
+        updateAddBtnLabel();
+      }
+    }
+
+    async function removeRecipe() {
+      if (!confirm('このレシピを削除しますか？')) return;
+      try {
+        await window.kakeiboData.deleteRecipe(recipe.id);
+        location.href = './recipe-list.html';
+      } catch (err) {
+        document.getElementById('status').textContent = 'エラー: ' + err.message;
+        document.getElementById('status').className = 'status err';
+      }
+    }
+
+    (async () => {
+      const id = qs('id');
+      const el = document.getElementById('content');
+      if (!id) { el.innerHTML = '<div class="empty">レシピが指定されていません</div>'; return; }
+      const ok = await window.kakeiboReady;
+      if (!ok) { el.innerHTML = '<div class="empty">ログインに失敗しました。LINEアプリから開き直してください。</div>'; return; }
+      try {
+        recipe = await window.kakeiboData.fetchRecipeDetail(id);
+        render();
+      } catch (err) {
+        el.innerHTML = '<div class="empty">読み込みエラー: ' + esc(err.message) + '</div>';
+      }
+    })();
+  </script>
+</body>
+</html>

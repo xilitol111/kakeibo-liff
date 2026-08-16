@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>レシピを登録</title>
+  <script>window.KAKEIBO_LIFF_ID = '';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --info-bg: #E8EEFB; --info-border: #B9CCF0; --info-ink: #2A4E9E;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --info-bg: #1A2436; --info-border: #2E4066; --info-ink: #7FA0E8;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { font-family: sans-serif; padding: 16px 16px 30px; color: var(--ink); background: var(--bg); max-width: 480px; margin: 0 auto; }
+    a.backLink { font-size: 12px; color: var(--muted); text-decoration: none; display: inline-block; margin-bottom: 10px; }
+    .detailTtl { font-size: 19px; font-weight: bold; margin-bottom: 14px; }
+    .previewBox { border: 1px solid var(--info-border); background: var(--info-bg); border-radius: 12px; padding: 14px; }
+    .previewLbl { font-size: 11.5px; font-weight: bold; color: var(--info-ink); margin-bottom: 10px; }
+    input.field, textarea.field { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 13px; background: var(--panel); color: var(--ink); font-family: inherit; }
+    textarea.field { resize: vertical; min-height: 60px; line-height: 1.6; }
+    .aiBtn { width: 100%; margin-top: 10px; background: var(--panel); color: var(--info-ink); border: 1px solid var(--info-border); border-radius: 10px; padding: 11px; font-size: 13px; font-weight: bold; }
+    .aiBtn:disabled { opacity: 0.6; }
+    label.fieldLbl { font-size: 11px; color: var(--faint); display: block; margin: 18px 0 5px; }
+    label.fieldLbl:first-of-type { margin-top: 0; }
+    .editIngRow { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+    .editIngRow input.field { padding: 8px 10px; font-size: 12.5px; }
+    .editIngRow input.iname2 { flex: 2; }
+    .editIngRow input.iamt2 { flex: 1; }
+    .editIngRow .rm { background: none; border: none; color: var(--faint); font-size: 15px; padding: 4px 6px; }
+    .addRowBtn { background: none; border: 1px dashed var(--border); color: var(--muted); border-radius: 8px; width: 100%; padding: 8px; font-size: 12px; margin-top: 2px; }
+    .primaryBtn { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 13px; font-size: 14px; font-weight: bold; margin-top: 24px; }
+    .primaryBtn:disabled { background: var(--border); color: var(--faint); }
+    .status { font-size: 12px; margin-top: 8px; text-align: center; }
+    .status.err { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./recipe-list.html">‹ 一覧に戻る</a>
+  <div class="detailTtl" id="pageTtl">レシピを登録</div>
+
+  <div class="previewBox">
+    <div class="previewLbl">🔗 URLやレシピの文章を貼るとAIが自動入力（任意・使わなくてもOK）</div>
+    <textarea class="field" id="aiInput" placeholder="レシピサイトのURL、またはレシピの文章をここに貼り付け"></textarea>
+    <button class="aiBtn" id="aiBtn">✨ AIで読み込んで下のフォームに反映</button>
+    <div class="status" id="aiStatus"></div>
+  </div>
+
+  <div style="margin-top:20px;">
+    <label class="fieldLbl">料理名</label>
+    <input class="field" id="nameField" />
+
+    <label class="fieldLbl">材料</label>
+    <div id="ingredientRows"></div>
+    <button class="addRowBtn" id="addIngRowBtn" type="button">＋ 材料を追加</button>
+
+    <label class="fieldLbl">作り方</label>
+    <textarea class="field" id="stepsField" style="min-height:110px;"></textarea>
+  </div>
+
+  <button class="primaryBtn" id="saveBtn">保存する</button>
+  <div class="status" id="saveStatus"></div>
+
+  <script>
+    function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function qs(name) { return new URLSearchParams(location.search).get(name); }
+
+    let recipeId = null;
+    let sourceUrl = null;
+
+    function ingredientRowHtml(name, quantity) {
+      return '<div class="editIngRow">' +
+        '<input class="field iname2" placeholder="品名" value="' + esc(name || '') + '" />' +
+        '<input class="field iamt2" placeholder="分量" value="' + esc(quantity || '') + '" />' +
+        '<button type="button" class="rm">×</button>' +
+      '</div>';
+    }
+
+    function addIngredientRow(name, quantity) {
+      const wrap = document.getElementById('ingredientRows');
+      const div = document.createElement('div');
+      div.innerHTML = ingredientRowHtml(name, quantity);
+      const row = div.firstChild;
+      row.querySelector('.rm').addEventListener('click', () => row.remove());
+      wrap.appendChild(row);
+    }
+
+    document.getElementById('addIngRowBtn').addEventListener('click', () => addIngredientRow('', ''));
+
+    function collectIngredients() {
+      return Array.from(document.querySelectorAll('#ingredientRows .editIngRow')).map((row) => ({
+        name: row.querySelector('.iname2').value.trim(),
+        quantity: row.querySelector('.iamt2').value.trim() || null
+      })).filter((i) => i.name);
+    }
+
+    function fillForm(data) {
+      document.getElementById('nameField').value = data.name || '';
+      document.getElementById('stepsField').value = data.stepsText || data.steps || '';
+      document.getElementById('ingredientRows').innerHTML = '';
+      const ingredients = data.ingredients && data.ingredients.length > 0 ? data.ingredients : [{ name: '', quantity: '' }];
+      ingredients.forEach((i) => addIngredientRow(i.name, i.quantity));
+    }
+
+    document.getElementById('aiBtn').addEventListener('click', async () => {
+      const rawInput = document.getElementById('aiInput').value.trim();
+      const status = document.getElementById('aiStatus');
+      if (!rawInput) { status.textContent = 'URLかレシピの文章を貼り付けてください'; status.className = 'status err'; return; }
+      const btn = document.getElementById('aiBtn');
+      btn.disabled = true;
+      status.textContent = '読み込み中...（数秒かかります）';
+      status.className = 'status';
+      try {
+        const extracted = await window.kakeiboData.extractRecipeFromInput(rawInput);
+        if (!extracted.name && (!extracted.ingredients || extracted.ingredients.length === 0)) {
+          status.textContent = 'レシピの内容を読み取れませんでした。手入力で登録してください。';
+          status.className = 'status err';
+          return;
+        }
+        sourceUrl = extracted.sourceUrl || null;
+        fillForm(extracted);
+        status.textContent = '✓ 読み込みました。内容を確認して保存してください';
+        status.className = 'status';
+      } catch (err) {
+        status.textContent = 'エラー: ' + err.message;
+        status.className = 'status err';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      const name = document.getElementById('nameField').value.trim();
+      const status = document.getElementById('saveStatus');
+      if (!name) { status.textContent = '料理名を入力してください'; status.className = 'status err'; return; }
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+      status.textContent = '';
+      try {
+        const id = await window.kakeiboData.saveRecipe({
+          id: recipeId,
+          name,
+          sourceUrl,
+          stepsText: document.getElementById('stepsField').value.trim(),
+          ingredients: collectIngredients()
+        });
+        location.href = './recipe-detail.html?id=' + id;
+      } catch (err) {
+        status.textContent = 'エラー: ' + err.message;
+        status.className = 'status err';
+        btn.disabled = false;
+      }
+    });
+
+    (async () => {
+      const ok = await window.kakeiboReady;
+      if (!ok) { document.body.innerHTML = '<div style="padding:30px;text-align:center;color:var(--faint);">ログインに失敗しました。LINEアプリから開き直してください。</div>'; return; }
+
+      recipeId = qs('id');
+      if (recipeId) {
+        document.getElementById('pageTtl').textContent = 'レシピを編集';
+        try {
+          const recipe = await window.kakeiboData.fetchRecipeDetail(recipeId);
+          sourceUrl = recipe.sourceUrl;
+          fillForm(recipe);
+          return;
+        } catch (err) {
+          document.getElementById('saveStatus').textContent = '読み込みエラー: ' + err.message;
+          document.getElementById('saveStatus').className = 'status err';
+        }
+      }
+      addIngredientRow('', '');
+    })();
+  </script>
+</body>
+</html>

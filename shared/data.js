@@ -1014,6 +1014,66 @@
     return deleteShoppingItem(id);
   }
 
+  // ---- レシピ ----
+  async function fetchRecipes() {
+    const rows = unwrap(await sb().from('recipes').select('*, recipe_ingredients(count)').order('created_at', { ascending: false }));
+    return rows.map((r) => ({
+      id: r.id, name: r.name, sourceUrl: r.source_url, createdAt: r.created_at,
+      ingredientCount: (r.recipe_ingredients && r.recipe_ingredients[0] && r.recipe_ingredients[0].count) || 0
+    }));
+  }
+  async function fetchRecipeDetail(id) {
+    const row = unwrap(await sb().from('recipes').select('*, recipe_ingredients(*)').eq('id', id)
+      .order('sort_order', { foreignTable: 'recipe_ingredients', ascending: true }).single());
+    return {
+      id: row.id, name: row.name, sourceUrl: row.source_url, stepsText: row.steps_text,
+      ingredients: (row.recipe_ingredients || []).map((i) => ({ id: i.id, name: i.name, quantity: i.quantity }))
+    };
+  }
+  async function saveRecipe(payload) {
+    // payload: { id?, name, sourceUrl, stepsText, ingredients: [{name, quantity}] }
+    let recipeId = payload.id;
+    const recipeRecord = { name: payload.name, source_url: payload.sourceUrl || null, steps_text: payload.stepsText || null };
+    if (recipeId) {
+      const res = await sb().from('recipes').update(recipeRecord).eq('id', recipeId);
+      if (res.error) throw new Error(res.error.message);
+      const delRes = await sb().from('recipe_ingredients').delete().eq('recipe_id', recipeId);
+      if (delRes.error) throw new Error(delRes.error.message);
+    } else {
+      recipeId = unwrap(await sb().from('recipes').insert(recipeRecord).select())[0].id;
+    }
+    const ingredientRows = (payload.ingredients || [])
+      .filter((i) => i.name && i.name.trim())
+      .map((i, idx) => ({ recipe_id: recipeId, name: i.name.trim(), quantity: i.quantity || null, sort_order: idx }));
+    if (ingredientRows.length > 0) {
+      const res = await sb().from('recipe_ingredients').insert(ingredientRows);
+      if (res.error) throw new Error(res.error.message);
+    }
+    return recipeId;
+  }
+  async function deleteRecipe(id) {
+    const res = await sb().from('recipes').delete().eq('id', id);
+    if (res.error) throw new Error(res.error.message);
+  }
+  // AI抽出はrecipe-extract Edge Function経由（GeminiのAPIキーをクライアントに渡さないため。
+  // shopping-classifyと同じ「セッショントークンをAuthorizationに載せて直接fetch」パターン）
+  async function extractRecipeFromInput(rawInput) {
+    const { data: { session } } = await sb().auth.getSession();
+    const res = await fetch('https://gduznhcuyjxxyuhfexek.supabase.co/functions/v1/recipe-extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+      body: JSON.stringify({ rawInput })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'recipe-extract failed');
+    return data;
+  }
+  // 材料の買い物リスト追加は、既存のshopping-classify Edge Function（重複チェック＋Geminiでの
+  // カテゴリ分類込み）をそのまま1品ずつ並列で呼び出す。新しい挿入ロジックを別途持たない
+  async function addRecipeIngredientsToShoppingList(names) {
+    return Promise.all(names.map((n) => addShoppingItemFromLiff(n)));
+  }
+
   // ---- 資産管理 ----
   function buildAssetDateGroups_(snapshotRows) {
     const byDate = {};
@@ -1330,6 +1390,8 @@
     submitTransactionFromLiff,
     // shopping list
     getShoppingScreenData, addShoppingItemFromLiff, toggleShoppingItemPurchased, removeShoppingItem,
+    // recipes
+    fetchRecipes, fetchRecipeDetail, saveRecipe, deleteRecipe, extractRecipeFromInput, addRecipeIngredientsToShoppingList,
     // asset management
     getAssetScreenInitialData, saveAssetItem, deactivateAssetItem, saveAssetSnapshot, fetchAssetItems,
     saveAssetTermConditions, removeAssetTermConditions,
