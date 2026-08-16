@@ -20,7 +20,7 @@ window.KAKEIBO_LIABILITY_CATEGORIES = ['住宅ローン', '自動車ローン', 
 // のLINE_HELP_TEXT）はDeno側の別ファイルのため自動同期はできない。コマンドを追加・変更する際は
 // 両方を手動でセットで更新すること
 window.KAKEIBO_LINE_COMMANDS = [
-  { cmd: '追加 アイテム名', alias: 'a', desc: '買い物リストに追加', example: 'a 牛乳' },
+  { cmd: '追加 アイテム名', alias: 'a', desc: '買い物リストに追加（読点・カンマ区切りで複数件、数量も一緒に指定可）', example: 'a 牛乳2本、卵1パック' },
   { cmd: '完了 アイテム名', alias: 'd', desc: 'そのアイテムを買い物リストで完了にする', example: 'd 牛乳' },
   { cmd: 'リスト', alias: 'l', desc: '買い物リストの未購入分をLINEのトーク上に一覧表示', example: null },
   { cmd: '修正 ...', alias: 'f', desc: '直近の家計簿記録を修正する', example: 'f 金額を1200円に' },

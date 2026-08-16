@@ -35,6 +35,7 @@
     .checkbox.checked { background: var(--accent); border-color: var(--accent); }
     .checkbox.checked::after { content: "✓"; color: #fff; font-size: 14px; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
     .itemName { flex: 1; font-size: 15px; }
+    .itemQty { font-size: 12px; color: var(--faint); font-weight: normal; margin-left: 2px; }
     .itemName.done { color: var(--faint); text-decoration: line-through; }
     .itemMeta { font-size: 10.5px; color: var(--faint); }
     .delBtn { flex: none; background: none; border: none; color: var(--danger); font-size: 18px; width: auto; padding: 4px 8px; margin: 0; }
@@ -126,7 +127,7 @@
           row.className = 'listItem';
           row.innerHTML =
             '<div class="checkbox" data-id="' + item.id + '" role="checkbox" aria-checked="false" tabindex="0" aria-label="' + esc(item.name) + 'を購入済みにする"></div>' +
-            '<div class="itemName">' + esc(item.name) + '</div>' +
+            '<div class="itemName">' + esc(item.name) + (item.quantity ? '<span class="itemQty">（' + esc(item.quantity) + '）</span>' : '') + '</div>' +
             staleDaysBadge(item.created_at) +
             '<button class="delBtn" data-id="' + item.id + '" type="button" aria-label="' + esc(item.name) + 'を削除">✕</button>';
           el.appendChild(row);
