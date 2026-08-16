@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>住宅ローン詳細</title>
+  <script>window.KAKEIBO_LIFF_ID = '2010928882-HCklSwwX';</script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="./shared/config.js"></script>
+  <script src="./shared/auth.js"></script>
+  <script src="./shared/data.js"></script>
+  <style>
+    :root {
+      --bg: #FFFFFF; --panel: #FFFFFF; --ink: #16211C; --muted: #5B6B62; --faint: #8B978F;
+      --border: #DCE4DE; --accent: #06C755; --accent-ink: #067A38; --accent-soft: #EAF0EB;
+      --accent-soft2: #F2F7F4; --danger: #C0392B; --success-bg: #E4F7EC;
+      --code-bg: #F2F7F4;
+      --s1:#2a78d6; --liab:#d03b3b;
+      --axis:#c3c2b7; --grid:#e1e0d9;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14181A; --panel: #1C2220; --ink: #EAF0EB; --muted: #9AA6A0; --faint: #6C766F;
+        --border: #2B332F; --accent: #06C755; --accent-ink: #4FE39A; --accent-soft: #1B2A22;
+        --accent-soft2: #17231C; --danger: #E5766A; --success-bg: #163627;
+        --code-bg: #17231C;
+        --s1:#3987e5; --liab:#e5766a;
+        --axis:#383835; --grid:#2c2c2a;
+      }
+    }
+    body { font-family: sans-serif; padding: 16px; color: var(--ink); background: var(--bg); }
+    a.backLink { display: inline-block; margin-bottom: 10px; font-size: 12px; color: var(--accent-ink); font-weight: bold; text-decoration: none; }
+    h2.title { font-size: 15px; margin: 0 0 2px; }
+    p.sub { font-size: 11.5px; color: var(--faint); margin: 0 0 12px; }
+    .muted { font-size: 12px; color: var(--faint); }
+
+    label { display: block; margin-top: 10px; font-weight: bold; font-size: 12px; }
+    select, input[type="text"], input[type="number"], input[type="date"] {
+      width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; font-size: 14px;
+      background: var(--panel); color: var(--ink); border: 1px solid var(--border); border-radius: 6px;
+    }
+    button { padding: 10px; font-size: 13px; font-weight: bold; background: var(--accent); color: white; border: none; border-radius: 8px; }
+    button.small { width: auto; padding: 7px 12px; font-size: 12px; }
+    button.ghost { background: transparent; color: var(--accent-ink); border: 1.5px solid var(--accent); }
+
+    .mini-row { display: flex; gap: 8px; margin: 10px 0; }
+    .mini { flex: 1; background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px; }
+    .mini .lbl { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+    .mini .val { font-size: 13.5px; font-weight: bold; font-variant-numeric: tabular-nums; }
+
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 12px 10px; margin-bottom: 12px; }
+    .card h4 { font-size: 12px; margin: 0 0 8px; color: var(--muted); font-weight: bold; }
+
+    .rateRow { display: flex; justify-content: space-between; align-items: center; padding: 7px 2px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
+    .rateRow:last-child { border-bottom: none; }
+    .rateRow .del { color: var(--danger); font-size: 10.5px; font-weight: bold; background: none; border: none; padding: 0; margin: 0; width: auto; }
+    .addRateRow { display: flex; gap: 6px; margin-top: 8px; align-items: flex-end; }
+    .addRateRow > div { flex: 1; }
+    .addRateRow label { margin-top: 0; }
+    .addRateRow button { flex: none; }
+
+    table.yearTable { width: 100%; border-collapse: collapse; font-size: 10.8px; }
+    table.yearTable th { text-align: right; color: var(--muted); font-weight: bold; padding: 4px 3px; border-bottom: 1px solid var(--border); }
+    table.yearTable th:first-child, table.yearTable td:first-child { text-align: left; }
+    table.yearTable td { text-align: right; padding: 4px 3px; font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--grid); }
+    table.yearTable tr.rateChangeYear td { color: var(--accent-ink); font-weight: bold; }
+
+    .monthGroup { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; overflow: hidden; }
+    .monthGroupHead { display: flex; justify-content: space-between; padding: 8px 10px; font-size: 11.5px; font-weight: bold; cursor: pointer; background: var(--code-bg); }
+    .monthGroupBody { display: none; padding: 4px 10px 8px; overflow-x: auto; }
+    .monthGroup.open .monthGroupBody { display: block; }
+    table.monthTable { width: 100%; border-collapse: collapse; font-size: 10.3px; white-space: nowrap; }
+    table.monthTable th { text-align: right; color: var(--muted); padding: 3px 4px; }
+    table.monthTable th:first-child, table.monthTable td:first-child { text-align: left; }
+    table.monthTable td { text-align: right; padding: 3px 4px; font-variant-numeric: tabular-nums; }
+
+    .saleForm .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .saleResult { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; margin-top: 10px; }
+    .saleResult .row { display: flex; justify-content: space-between; font-size: 11.5px; padding: 3px 0; }
+    .saleResult .row.total { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 6px; font-weight: bold; font-size: 13px; color: var(--accent-ink); }
+  </style>
+</head>
+<body>
+  <a class="backLink" href="./asset-form.html">← 資産管理に戻る</a>
+  <div id="content"><p class="muted">読み込み中…</p></div>
+
+  <script>
+    let screenData = null;
+    function yen(n) { return '¥' + Number(n || 0).toLocaleString('ja-JP'); }
+    function million(n) { return (Number(n || 0) / 1000000).toFixed(2); }
+    function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    function getItemIdFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('itemId');
+    }
+
+    function renderMiniStats() {
+      const t = screenData.term, item = screenData.item;
+      let html = '<div class="mini-row">' +
+        '<div class="mini"><div class="lbl">借入元金</div><div class="val">' + million(t.principal) + '百万円</div></div>' +
+        '<div class="mini"><div class="lbl">本日時点残高</div><div class="val">' + million(screenData.currentBalance) + '百万円</div></div>' +
+        '<div class="mini"><div class="lbl">完済予定</div><div class="val">' + (screenData.maturityDate ? screenData.maturityDate.year + '年' + screenData.maturityDate.month + '月' : '-') + '</div></div>' +
+        '</div>';
+      if (screenData.linkedProperty) {
+        const propVal = screenData.linkedProperty.latestAmount;
+        const netWorth = propVal != null ? propVal - screenData.currentBalance : null;
+        html += '<div class="mini-row">' +
+          '<div class="mini"><div class="lbl">不動産評価額（最新記録）</div><div class="val">' + (propVal != null ? million(propVal) + '百万円' : '未記録') + '</div></div>' +
+          '<div class="mini"><div class="lbl">この物件の純資産</div><div class="val" style="color:var(--accent-ink);">' + (netWorth != null ? million(netWorth) + '百万円' : '-') + '</div></div>' +
+          '</div>';
+      }
+      document.getElementById('miniStats').innerHTML = html;
+    }
+
+    async function onPropertyChange(e) {
+      const val = e.target.value || null;
+      try {
+        await window.kakeiboData.saveAssetTermConditions(screenData.item.id, {
+          principal: screenData.term.principal, annualRatePercent: screenData.term.annual_rate_percent,
+          termYears: screenData.term.term_years, startDate: screenData.term.start_date,
+          linkedPropertyAssetItemId: val
+        });
+        screenData = await window.kakeiboData.getLoanDetailScreenData(screenData.item.id);
+        renderAll();
+      } catch (err) { alert('エラー: ' + err.message); }
+    }
+
+    function renderPropertyLink() {
+      const opts = screenData.propertyOptions || [];
+      let html = '<div class="card" style="padding:10px 12px;"><h4>対応する不動産</h4>';
+      html += '<select id="propertySelect"><option value="">（リンクしない）</option>' +
+        opts.map((o) => '<option value="' + o.id + '"' + (screenData.term.linked_property_asset_item_id === o.id ? ' selected' : '') + '>' + esc(o.name) + '</option>').join('') +
+        '</select>';
+      html += '<p class="sub" style="margin:6px 2px 0;">選んだ不動産項目の最新記録額を「資産額」として表示します（不動産の評価額に計算式は無いため、資産管理で最後に手入力した値をそのまま参照します）。</p>';
+      html += '</div>';
+      document.getElementById('propertyLink').innerHTML = html;
+      document.getElementById('propertySelect').addEventListener('change', onPropertyChange);
+    }
+
+    function renderRateChanges() {
+      const rows = screenData.rateChanges || [];
+      let html = '<div class="card"><h4>金利変更イベント</h4>';
+      if (rows.length === 0) {
+        html += '<p class="muted">まだ登録されていません。</p>';
+      } else {
+        rows.forEach((rc) => {
+          html += '<div class="rateRow"><span>' + rc.effective_date.slice(0, 7).replace('-', '年') + '月〜　年' + rc.annual_rate_percent + '%</span>' +
+            '<button class="del" data-remove-rate="' + rc.id + '">削除</button></div>';
+        });
+      }
+      html += '<p class="sub" style="margin:6px 2px 0;">その時点の残高・残り期間で返済額を再計算します（リキャスト方式。5年ルール・125%ルールは考慮しません）。</p>';
+      html += '<div class="addRateRow">' +
+        '<div><label>発効月</label><input type="month" id="newRateDate" /></div>' +
+        '<div><label>年利率（%）</label><input type="number" step="0.01" id="newRateValue" /></div>' +
+        '<button class="small" id="btnAddRate" type="button">追加</button>' +
+        '</div></div>';
+      document.getElementById('rateChanges').innerHTML = html;
+      document.querySelectorAll('[data-remove-rate]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('この金利変更を削除しますか？')) return;
+          await window.kakeiboData.removeLoanRateChange(btn.getAttribute('data-remove-rate'));
+          screenData = await window.kakeiboData.getLoanDetailScreenData(screenData.item.id);
+          renderAll();
+        });
+      });
+      document.getElementById('btnAddRate').addEventListener('click', async () => {
+        const monthVal = document.getElementById('newRateDate').value;
+        const rateVal = document.getElementById('newRateValue').value;
+        if (!monthVal || rateVal === '') { alert('発効月と年利率を入力してください'); return; }
+        try {
+          await window.kakeiboData.saveLoanRateChange(screenData.item.id, { effectiveDate: monthVal + '-01', annualRatePercent: rateVal });
+          screenData = await window.kakeiboData.getLoanDetailScreenData(screenData.item.id);
+          renderAll();
+        } catch (err) { alert('エラー: ' + err.message); }
+      });
+    }
+
+    function renderChart() {
+      const yearly = screenData.yearlySummary || [];
+      const el = document.getElementById('chart');
+      if (yearly.length === 0) { el.innerHTML = ''; return; }
+      const maxBal = Math.max(screenData.term.principal, ...yearly.map((y) => y.endBalance), 1);
+      const W = 320, H = 130, padL = 10, padR = 10, padT = 10, baseY = 108;
+      const n = yearly.length;
+      const pts = [padL + ',' + (baseY - (screenData.term.principal / maxBal) * (baseY - padT))];
+      yearly.forEach((y, i) => {
+        const x = padL + ((i + 1) / n) * (W - padL - padR);
+        const yy = baseY - (y.endBalance / maxBal) * (baseY - padT);
+        pts.push(x + ',' + yy);
+      });
+      const rateChangeMarks = yearly.map((y, i) => y.rateChanged
+        ? '<circle cx="' + (padL + ((i + 1) / n) * (W - padL - padR)) + '" cy="' + (baseY - (y.endBalance / maxBal) * (baseY - padT)) + '" r="3" fill="var(--accent)"/>'
+        : '').join('');
+      el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="住宅ローン残高の完済までの推移。金利変更のあった年は緑の点で表示">' +
+        '<line x1="' + padL + '" y1="' + padT + '" x2="' + padL + '" y2="' + baseY + '" stroke="var(--axis)" stroke-width="1"/>' +
+        '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--axis)" stroke-width="1"/>' +
+        '<polyline points="' + pts.join(' ') + '" fill="none" stroke="var(--liab)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+        rateChangeMarks +
+        '<text x="' + padL + '" y="' + (H - 2) + '" font-size="8.5" fill="var(--muted)">' + yearly[0].year + '</text>' +
+        '<text x="' + (W - padR) + '" y="' + (H - 2) + '" font-size="8.5" fill="var(--muted)" text-anchor="end">' + yearly[yearly.length - 1].year + '</text>' +
+        '</svg>';
+    }
+
+    function renderYearlyTable() {
+      const yearly = screenData.yearlySummary || [];
+      let html = '<table class="yearTable"><tr><th>年</th><th>元金</th><th>利息</th><th>年末残高</th></tr>';
+      yearly.forEach((y) => {
+        html += '<tr' + (y.rateChanged ? ' class="rateChangeYear"' : '') + '><td>' + y.year + '</td><td>' + million(y.principalPaid) + '</td><td>' + million(y.interestPaid) + '</td><td>' + million(y.endBalance) + '</td></tr>';
+      });
+      html += '</table><p class="sub" style="margin:6px 2px 0;">単位：百万円。金利変更のあった年は色分け表示。</p>';
+      document.getElementById('yearlyTable').innerHTML = html;
+    }
+
+    function renderMonthlyTable() {
+      const schedule = screenData.schedule || [];
+      const byYear = {};
+      schedule.forEach((row) => { const y = row.date.slice(0, 4); (byYear[y] = byYear[y] || []).push(row); });
+      const years = Object.keys(byYear).sort();
+      let html = '';
+      years.forEach((y, idx) => {
+        const rows = byYear[y];
+        const rowsHtml = rows.map((r) =>
+          '<tr><td>' + Number(r.date.slice(5, 7)) + '月</td><td>' + yen(r.payment) + '</td><td>' + yen(r.principalPaid) + '</td><td>' + yen(r.interestPaid) + '</td><td>' + yen(r.balance) + '</td></tr>'
+        ).join('');
+        html += '<div class="monthGroup' + (idx === 0 ? ' open' : '') + '" data-year="' + y + '">' +
+          '<div class="monthGroupHead"><span>' + y + '年（' + rows.length + 'ヶ月）</span><span class="arrow">' + (idx === 0 ? '▾' : '▸') + '</span></div>' +
+          '<div class="monthGroupBody"><table class="monthTable"><tr><th>月</th><th>返済額</th><th>元金</th><th>利息</th><th>残高</th></tr>' + rowsHtml + '</table></div>' +
+          '</div>';
+      });
+      document.getElementById('monthlyTable').innerHTML = html;
+      document.querySelectorAll('.monthGroupHead').forEach((head) => {
+        head.addEventListener('click', () => {
+          const group = head.closest('.monthGroup');
+          group.classList.toggle('open');
+          head.querySelector('.arrow').textContent = group.classList.contains('open') ? '▾' : '▸';
+        });
+      });
+    }
+
+    function findBalanceAtDate_(dateStr) {
+      const schedule = screenData.schedule || [];
+      if (dateStr <= screenData.term.start_date) return screenData.term.principal;
+      const found = schedule.find((r) => r.date >= dateStr);
+      return found ? found.balance : 0;
+    }
+
+    function updateSaleResult() {
+      const dateVal = document.getElementById('saleDate').value;
+      const priceVal = Number(document.getElementById('salePrice').value || 0);
+      if (!dateVal || !priceVal) { document.getElementById('saleResult').innerHTML = ''; return; }
+      const balance = findBalanceAtDate_(dateVal);
+      const net = priceVal - balance;
+      document.getElementById('saleResult').innerHTML =
+        '<div class="saleResult">' +
+        '<div class="row"><span>想定売却価格</span><span>' + yen(priceVal) + '</span></div>' +
+        '<div class="row"><span>その時点のローン残高（自動計算）</span><span>−' + yen(balance) + '</span></div>' +
+        '<div class="row total"><span>手取り目安</span><span>' + yen(net) + '</span></div>' +
+        '</div>' +
+        '<p class="sub" style="margin:8px 2px 0;">仲介手数料・譲渡所得税・抵当権抹消費用等の諸経費は含みません。あくまで「売却価格－その時点のローン残高」の概算です。</p>';
+    }
+
+    function renderSaleSimulation() {
+      document.getElementById('saleForm').innerHTML =
+        '<div class="row2"><div><label>売却時期</label><input type="date" id="saleDate" /></div>' +
+        '<div><label>想定売却価格</label><input type="number" id="salePrice" placeholder="例：16000000" /></div></div>' +
+        '<div id="saleResult"></div>';
+      document.getElementById('saleDate').addEventListener('input', updateSaleResult);
+      document.getElementById('salePrice').addEventListener('input', updateSaleResult);
+    }
+
+    function renderAll() {
+      const t = screenData.term, item = screenData.item;
+      document.getElementById('content').innerHTML =
+        '<h2 class="title">' + esc(item.category) + '・' + esc(item.institution) + '</h2>' +
+        '<p class="sub">元金' + million(t.principal) + '百万円・当初年利' + t.annual_rate_percent + '%・' + t.term_years + '年・' + t.start_date.slice(0, 7).replace('-', '年') + '月開始</p>' +
+        '<div id="propertyLink"></div>' +
+        '<div id="miniStats"></div>' +
+        '<div id="rateChanges"></div>' +
+        '<div class="card"><h4>残高推移</h4><div id="chart"></div></div>' +
+        '<div class="card"><h4>年別サマリ</h4><div id="yearlyTable"></div></div>' +
+        '<div class="card"><h4>月別返済予定表（全期間・年ごとに折りたたみ）</h4><div id="monthlyTable"></div></div>' +
+        '<div class="card"><h4>売却シミュレーション</h4><div id="saleForm"></div></div>';
+      renderPropertyLink();
+      renderMiniStats();
+      renderRateChanges();
+      renderChart();
+      renderYearlyTable();
+      renderMonthlyTable();
+      renderSaleSimulation();
+    }
+
+    window.kakeiboReady.then(async (ok) => {
+      if (!ok) {
+        document.getElementById('content').innerHTML = '<div style="color:var(--danger);">ログインできませんでした。LINEアプリから開き直してください。</div>';
+        return;
+      }
+      const itemId = getItemIdFromUrl();
+      if (!itemId) { document.getElementById('content').innerHTML = '<p class="muted">項目が指定されていません。資産管理画面から開いてください。</p>'; return; }
+      try {
+        screenData = await window.kakeiboData.getLoanDetailScreenData(itemId);
+        renderAll();
+      } catch (err) {
+        document.getElementById('content').innerHTML = '<p style="color:var(--danger);">エラー: ' + esc(err.message) + '</p>';
+      }
+    });
+  </script>
+</body>
+</html>

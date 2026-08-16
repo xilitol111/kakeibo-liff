@@ -419,6 +419,7 @@
             : '単利で満期までの評価額を按分する目安です。実際の利率・複利方式とズレる場合があります。ズレたら記録画面で金額を上書きしてください（設定自体は消えません）。') + '</div>' +
           '</div>' +
           '<button class="small saveTermsBtn" type="button" data-item-id="' + item.id + '">保存</button>' +
+          (item.item_type === 'liability' && t ? ' <a class="act" href="./loan-detail.html?itemId=' + item.id + '" style="text-decoration:none;">返済予定・金利変動の詳細を見る ›</a>' : '') +
           '</div>' +
           '</div>';
       }).join('');

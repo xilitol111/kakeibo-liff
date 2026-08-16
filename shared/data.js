@@ -1041,26 +1041,66 @@
       term_years: Number(payload.termYears),
       start_date: payload.startDate
     };
+    // linkedPropertyAssetItemIdが渡されなかった場合はキー自体を含めず、upsert時に既存の紐付けを
+    // 上書きしない（資産項目の管理画面の簡易フォームからの保存で、ローン詳細ページで設定した
+    // 紐付けが毎回nullに戻ってしまうのを防ぐ）
+    if (payload.linkedPropertyAssetItemId !== undefined) {
+      record.linked_property_asset_item_id = payload.linkedPropertyAssetItemId || null;
+    }
     return unwrap(await sb().from('asset_term_conditions').upsert(record, { onConflict: 'asset_item_id' }).select())[0];
   }
   async function removeAssetTermConditions(assetItemId) {
     unwrap(await sb().from('asset_term_conditions').delete().eq('asset_item_id', assetItemId));
   }
+  async function fetchAllLoanRateChanges() {
+    return unwrap(await sb().from('asset_loan_rate_changes').select('*').order('effective_date', { ascending: true }));
+  }
+  async function saveLoanRateChange(assetItemId, payload) {
+    return unwrap(await sb().from('asset_loan_rate_changes')
+      .insert({ asset_item_id: assetItemId, effective_date: payload.effectiveDate, annual_rate_percent: Number(payload.annualRatePercent) })
+      .select())[0];
+  }
+  async function removeLoanRateChange(id) {
+    unwrap(await sb().from('asset_loan_rate_changes').delete().eq('id', id));
+  }
+
   function monthsElapsed_(startDate, asOfDate) {
     const s = new Date(startDate + 'T00:00:00'), a = new Date(asOfDate + 'T00:00:00');
     let months = (a.getFullYear() - s.getFullYear()) * 12 + (a.getMonth() - s.getMonth());
     if (a.getDate() < s.getDate()) months -= 1;
     return Math.max(0, months);
   }
-  // 住宅ローン等（負債）：元利均等返済の標準計算式で残高を算出
-  function computeLoanRemainingBalance_(term, asOfDate) {
-    const P = term.principal, n = term.term_years * 12, r = term.annual_rate_percent / 100 / 12;
-    const k = Math.min(monthsElapsed_(term.start_date, asOfDate), n);
-    if (k <= 0) return P;
-    if (k >= n) return 0;
-    if (r === 0) return Math.round(P - (P / n) * k);
-    const powN = Math.pow(1 + r, n), powK = Math.pow(1 + r, k);
-    return Math.round(P * (powN - powK) / (powN - 1));
+  // 金利変更履歴から「返済開始月から効力を持つ利率」の区間リストを組み立てる（昇順）
+  function buildRateSegments_(term, rateChanges) {
+    const segs = [{ startDate: term.start_date, rate: Number(term.annual_rate_percent) }];
+    (rateChanges || []).slice().sort((a, b) => (a.effective_date < b.effective_date ? -1 : 1)).forEach((rc) => {
+      if (rc.effective_date > term.start_date) segs.push({ startDate: rc.effective_date, rate: Number(rc.annual_rate_percent) });
+    });
+    return segs;
+  }
+  // 住宅ローン等（負債）：金利変更のたびに「その時点の残高・残り期間」で返済額を再計算する
+  // リキャスト方式。日本の変動金利ローンの5年ルール・125%ルールは対象外（単純化のため）
+  function computeLoanRemainingBalance_(term, rateChanges, asOfDate) {
+    const totalMonths = term.term_years * 12;
+    const segments = buildRateSegments_(term, rateChanges);
+    let balance = term.principal, monthsElapsedTotal = 0;
+    for (let i = 0; i < segments.length; i++) {
+      const remainingMonths = totalMonths - monthsElapsedTotal;
+      if (remainingMonths <= 0) { balance = 0; break; }
+      const segStart = segments[i].startDate;
+      const segEnd = (i + 1 < segments.length) ? segments[i + 1].startDate : null;
+      if (asOfDate < segStart) break;
+      const r = segments[i].rate / 100 / 12;
+      const n = remainingMonths;
+      const segEndForCalc = (segEnd && segEnd < asOfDate) ? segEnd : asOfDate;
+      const k = Math.min(monthsElapsed_(segStart, segEndForCalc), n);
+      if (k <= 0) break;
+      if (k >= n) { balance = 0; monthsElapsedTotal += n; break; }
+      balance = (r === 0) ? balance - (balance / n) * k : balance * (Math.pow(1 + r, n) - Math.pow(1 + r, k)) / (Math.pow(1 + r, n) - 1);
+      monthsElapsedTotal += k;
+      if (!segEnd || segEnd > asOfDate) break;
+    }
+    return Math.round(Math.max(0, balance));
   }
   // 定期預金等（資産）：単利で満期までの評価額を経過期間で按分（満期後は満期額で頭打ち）
   function computeAssetTermValue_(term, asOfDate) {
@@ -1069,14 +1109,102 @@
     const rate = term.annual_rate_percent / 100;
     return Math.round(term.principal * (1 + rate * elapsedYears));
   }
-  function computeTermForecastValue_(itemType, term, asOfDate) {
+  function computeTermForecastValue_(itemType, term, rateChanges, asOfDate) {
     if (!term) return null;
-    return itemType === 'liability' ? computeLoanRemainingBalance_(term, asOfDate) : computeAssetTermValue_(term, asOfDate);
+    return itemType === 'liability' ? computeLoanRemainingBalance_(term, rateChanges, asOfDate) : computeAssetTermValue_(term, asOfDate);
   }
   function termMaturityDate_(term) {
     const d = new Date(term.start_date + 'T00:00:00');
     d.setFullYear(d.getFullYear() + term.term_years);
     return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+
+  // ローン単独の月別返済予定表（借入開始から完済まで全期間）を生成する。一覧画面の予測残高
+  // 表示（computeLoanRemainingBalance_、スカラー値のみ）とは別に、ローン詳細ページの
+  // 表・グラフ用に全月の内訳を持つ配列を作る
+  function buildAmortizationSchedule_(term, rateChanges) {
+    const totalMonths = term.term_years * 12;
+    const segments = buildRateSegments_(term, rateChanges);
+    const schedule = [];
+    let balance = term.principal, monthIndex = 0, curDate = new Date(term.start_date + 'T00:00:00');
+    for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+      const segRate = segments[segIdx].rate;
+      const remainingMonths = totalMonths - monthIndex;
+      if (remainingMonths <= 0) break;
+      const r = segRate / 100 / 12, n = remainingMonths;
+      const monthlyPayment = (r === 0) ? balance / n : balance * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
+      const nextSegStart = (segIdx + 1 < segments.length) ? new Date(segments[segIdx + 1].startDate + 'T00:00:00') : null;
+      for (let m = 0; m < remainingMonths; m++) {
+        const payDate = new Date(curDate); payDate.setMonth(payDate.getMonth() + 1);
+        if (nextSegStart && payDate.getTime() > nextSegStart.getTime()) break;
+        const interest = (r === 0) ? 0 : balance * r;
+        let principalPaid = monthlyPayment - interest;
+        if (principalPaid > balance) principalPaid = balance;
+        balance = Math.max(0, balance - principalPaid);
+        schedule.push({
+          date: payDate.toISOString().slice(0, 10), rate: segRate,
+          payment: Math.round(monthlyPayment), principalPaid: Math.round(principalPaid),
+          interestPaid: Math.round(interest), balance: Math.round(balance)
+        });
+        monthIndex++; curDate = payDate;
+        if (balance <= 0) break;
+      }
+      if (balance <= 0) break;
+    }
+    return schedule;
+  }
+  function buildYearlySummaryFromSchedule_(schedule) {
+    const byYear = {};
+    schedule.forEach((row) => {
+      const y = row.date.slice(0, 4);
+      if (!byYear[y]) byYear[y] = { year: Number(y), principalPaid: 0, interestPaid: 0, endBalance: 0, rates: new Set() };
+      byYear[y].principalPaid += row.principalPaid;
+      byYear[y].interestPaid += row.interestPaid;
+      byYear[y].endBalance = row.balance;
+      byYear[y].rates.add(row.rate);
+    });
+    return Object.keys(byYear).sort().map((y) => {
+      const e = byYear[y];
+      return { year: e.year, principalPaid: e.principalPaid, interestPaid: e.interestPaid, endBalance: e.endBalance, rateChanged: e.rates.size > 1 };
+    });
+  }
+  function scheduleEndDate_(schedule) {
+    if (schedule.length === 0) return null;
+    const d = new Date(schedule[schedule.length - 1].date + 'T00:00:00');
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+
+  async function getLoanDetailScreenData(assetItemId) {
+    const [items, allTermConditions, allRateChanges, allSnapshots] = await Promise.all([
+      fetchAssetItems(false), fetchAssetTermConditions(), fetchAllLoanRateChanges(), fetchAllAssetSnapshots()
+    ]);
+    const item = items.find((i) => i.id === assetItemId);
+    if (!item) throw new Error('項目が見つかりません');
+    const term = allTermConditions.find((t) => t.asset_item_id === assetItemId);
+    if (!term) throw new Error('詳細条件が設定されていません');
+    const rateChanges = allRateChanges.filter((rc) => rc.asset_item_id === assetItemId);
+    const schedule = buildAmortizationSchedule_(term, rateChanges);
+    const yearlySummary = buildYearlySummaryFromSchedule_(schedule);
+    const today = todayStr();
+    const currentBalance = computeLoanRemainingBalance_(term, rateChanges, today);
+    const maturityDate = scheduleEndDate_(schedule) || termMaturityDate_(term);
+
+    let linkedProperty = null;
+    if (term.linked_property_asset_item_id) {
+      const propItem = items.find((i) => i.id === term.linked_property_asset_item_id);
+      if (propItem) {
+        const byDate = buildAssetDateGroups_(allSnapshots);
+        let latestAmount = null;
+        Object.keys(byDate).sort().forEach((d) => {
+          byDate[d].forEach((e) => { if (e.assetItemId === propItem.id) latestAmount = e.amount; });
+        });
+        linkedProperty = { id: propItem.id, name: propItem.category + '・' + propItem.institution, latestAmount };
+      }
+    }
+    const propertyOptions = items.filter((i) => i.item_type !== 'liability' && i.category === '不動産' && i.active)
+      .map((i) => ({ id: i.id, name: i.category + '・' + i.institution }));
+
+    return { item, term, rateChanges, schedule, yearlySummary, currentBalance, maturityDate, linkedProperty, propertyOptions };
   }
 
   async function fetchAssetGoals() {
@@ -1113,15 +1241,17 @@
   }
 
   async function getAssetScreenInitialData() {
-    const [items, snapshotRows, goalsRaw, termConditionsRaw] = await Promise.all([
-      fetchAssetItems(false), fetchAllAssetSnapshots(), fetchAssetGoals(), fetchAssetTermConditions()
+    const [items, snapshotRows, goalsRaw, termConditionsRaw, rateChangesRaw] = await Promise.all([
+      fetchAssetItems(false), fetchAllAssetSnapshots(), fetchAssetGoals(), fetchAssetTermConditions(), fetchAllLoanRateChanges()
     ]);
     const termByItem = {}; termConditionsRaw.forEach((t) => { termByItem[t.asset_item_id] = t; });
+    const rateChangesByItem = {};
+    rateChangesRaw.forEach((rc) => { (rateChangesByItem[rc.asset_item_id] = rateChangesByItem[rc.asset_item_id] || []).push(rc); });
     const today = todayStr();
     items.forEach((item) => {
       const term = termByItem[item.id] || null;
       item.termConditions = term;
-      item.forecastValue = term ? computeTermForecastValue_(item.item_type, term, today) : null;
+      item.forecastValue = term ? computeTermForecastValue_(item.item_type, term, rateChangesByItem[item.id] || [], today) : null;
       item.maturityDate = term ? termMaturityDate_(term) : null;
     });
     const byDate = buildAssetDateGroups_(snapshotRows);
@@ -1203,6 +1333,7 @@
     // asset management
     getAssetScreenInitialData, saveAssetItem, deactivateAssetItem, saveAssetSnapshot, fetchAssetItems,
     saveAssetTermConditions, removeAssetTermConditions,
+    getLoanDetailScreenData, saveLoanRateChange, removeLoanRateChange,
     saveAssetGoal, removeAssetGoal
   };
 })();
