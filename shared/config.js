@@ -20,17 +20,17 @@ window.KAKEIBO_LIABILITY_CATEGORIES = ['住宅ローン', '自動車ローン', 
 // のLINE_HELP_TEXT）はDeno側の別ファイルのため自動同期はできない。コマンドを追加・変更する際は
 // 両方を手動でセットで更新すること
 window.KAKEIBO_LINE_COMMANDS = [
-  { cmd: '追加 アイテム名', desc: '買い物リストに追加', example: '追加 牛乳' },
-  { cmd: '完了 アイテム名', desc: 'そのアイテムを買い物リストで完了にする', example: '完了 牛乳' },
-  { cmd: 'リスト', desc: '買い物リストの未購入分をLINEのトーク上に一覧表示', example: null },
-  { cmd: '修正 ...', desc: '直近の家計簿記録を修正する', example: '修正 金額を1200円に' },
-  { cmd: '質問 ...', desc: '支出・予算について質問する', example: '質問 今月食費いくら？' },
-  { cmd: 'ヘルプ／使い方', desc: 'この説明をLINEのトーク上に表示', example: null }
+  { cmd: '追加 アイテム名', alias: 'a', desc: '買い物リストに追加', example: 'a 牛乳' },
+  { cmd: '完了 アイテム名', alias: 'd', desc: 'そのアイテムを買い物リストで完了にする', example: 'd 牛乳' },
+  { cmd: 'リスト', alias: 'l', desc: '買い物リストの未購入分をLINEのトーク上に一覧表示', example: null },
+  { cmd: '修正 ...', alias: 'f', desc: '直近の家計簿記録を修正する', example: 'f 金額を1200円に' },
+  { cmd: '質問 ...', alias: 'q', desc: '支出・予算について質問する', example: 'q 今月食費いくら？' },
+  { cmd: 'ヘルプ／使い方', alias: 'h', desc: 'この説明をLINEのトーク上に表示', example: null }
 ];
 window.buildLineHelpText = function () {
-  const lines = ['📖 LINEでできること', ''];
+  const lines = ['📖 LINEでできること（かっこ内は省略形、変換不要で入力が早い）', ''];
   window.KAKEIBO_LINE_COMMANDS.forEach((c) => {
-    lines.push('・「' + c.cmd + '」→ ' + c.desc);
+    lines.push('・「' + c.cmd + '」（' + c.alias + '）→ ' + c.desc);
     if (c.example) lines.push('　（例：' + c.example + '）');
   });
   return lines.join('\n');
