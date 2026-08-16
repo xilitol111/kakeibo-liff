@@ -1029,6 +1029,56 @@
     return byDate;
   }
 
+  // ---- 資産項目の詳細条件（定期預金の単利評価額／住宅ローン等の元利均等残高を自動計算） ----
+  async function fetchAssetTermConditions() {
+    return unwrap(await sb().from('asset_term_conditions').select('*'));
+  }
+  async function saveAssetTermConditions(assetItemId, payload) {
+    const record = {
+      asset_item_id: assetItemId,
+      principal: Number(payload.principal),
+      annual_rate_percent: Number(payload.annualRatePercent),
+      term_years: Number(payload.termYears),
+      start_date: payload.startDate
+    };
+    return unwrap(await sb().from('asset_term_conditions').upsert(record, { onConflict: 'asset_item_id' }).select())[0];
+  }
+  async function removeAssetTermConditions(assetItemId) {
+    unwrap(await sb().from('asset_term_conditions').delete().eq('asset_item_id', assetItemId));
+  }
+  function monthsElapsed_(startDate, asOfDate) {
+    const s = new Date(startDate + 'T00:00:00'), a = new Date(asOfDate + 'T00:00:00');
+    let months = (a.getFullYear() - s.getFullYear()) * 12 + (a.getMonth() - s.getMonth());
+    if (a.getDate() < s.getDate()) months -= 1;
+    return Math.max(0, months);
+  }
+  // 住宅ローン等（負債）：元利均等返済の標準計算式で残高を算出
+  function computeLoanRemainingBalance_(term, asOfDate) {
+    const P = term.principal, n = term.term_years * 12, r = term.annual_rate_percent / 100 / 12;
+    const k = Math.min(monthsElapsed_(term.start_date, asOfDate), n);
+    if (k <= 0) return P;
+    if (k >= n) return 0;
+    if (r === 0) return Math.round(P - (P / n) * k);
+    const powN = Math.pow(1 + r, n), powK = Math.pow(1 + r, k);
+    return Math.round(P * (powN - powK) / (powN - 1));
+  }
+  // 定期預金等（資産）：単利で満期までの評価額を経過期間で按分（満期後は満期額で頭打ち）
+  function computeAssetTermValue_(term, asOfDate) {
+    const elapsedMonths = Math.min(monthsElapsed_(term.start_date, asOfDate), term.term_years * 12);
+    const elapsedYears = elapsedMonths / 12;
+    const rate = term.annual_rate_percent / 100;
+    return Math.round(term.principal * (1 + rate * elapsedYears));
+  }
+  function computeTermForecastValue_(itemType, term, asOfDate) {
+    if (!term) return null;
+    return itemType === 'liability' ? computeLoanRemainingBalance_(term, asOfDate) : computeAssetTermValue_(term, asOfDate);
+  }
+  function termMaturityDate_(term) {
+    const d = new Date(term.start_date + 'T00:00:00');
+    d.setFullYear(d.getFullYear() + term.term_years);
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+
   async function fetchAssetGoals() {
     return unwrap(await sb().from('asset_goals').select('*').order('created_at', { ascending: true }));
   }
@@ -1063,7 +1113,17 @@
   }
 
   async function getAssetScreenInitialData() {
-    const [items, snapshotRows, goalsRaw] = await Promise.all([fetchAssetItems(false), fetchAllAssetSnapshots(), fetchAssetGoals()]);
+    const [items, snapshotRows, goalsRaw, termConditionsRaw] = await Promise.all([
+      fetchAssetItems(false), fetchAllAssetSnapshots(), fetchAssetGoals(), fetchAssetTermConditions()
+    ]);
+    const termByItem = {}; termConditionsRaw.forEach((t) => { termByItem[t.asset_item_id] = t; });
+    const today = todayStr();
+    items.forEach((item) => {
+      const term = termByItem[item.id] || null;
+      item.termConditions = term;
+      item.forecastValue = term ? computeTermForecastValue_(item.item_type, term, today) : null;
+      item.maturityDate = term ? termMaturityDate_(term) : null;
+    });
     const byDate = buildAssetDateGroups_(snapshotRows);
     const dates = Object.keys(byDate).sort();
     const dateSummaries = dates.map((d) => {
@@ -1081,8 +1141,11 @@
     const previous = dateSummaries.length > 1 ? dateSummaries[dateSummaries.length - 2] : null;
     const trend = dateSummaries.slice(-6);
 
+    // 項目ごとの直近金額（プリセット表示用）。dateSummariesは日付昇順なので、後の記録で
+    // 上書きしていけば「その項目が最後に記録された時点の金額」になる（最新の日付に
+    // その項目が含まれていなくても、それより前の記録があれば正しく拾える）
     const latestAmountByItem = {};
-    if (latest) latest.entries.forEach((e) => { latestAmountByItem[e.assetItemId] = e.amount; });
+    dateSummaries.forEach((d) => { d.entries.forEach((e) => { latestAmountByItem[e.assetItemId] = e.amount; }); });
 
     const netWorthHistory = dateSummaries.slice(-12).map((d) => ({ date: d.date, netWorth: d.netWorth }));
     const monthlyAvgIncrease = computeMonthlyNetWorthTrend_(netWorthHistory);
@@ -1139,6 +1202,7 @@
     getShoppingScreenData, addShoppingItemFromLiff, toggleShoppingItemPurchased, removeShoppingItem,
     // asset management
     getAssetScreenInitialData, saveAssetItem, deactivateAssetItem, saveAssetSnapshot, fetchAssetItems,
+    saveAssetTermConditions, removeAssetTermConditions,
     saveAssetGoal, removeAssetGoal
   };
 })();

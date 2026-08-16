@@ -77,15 +77,27 @@
     .item-row input.amount-box {
       width: 118px; flex: none; text-align: right; margin: 0; padding: 7px 9px; font-size: 12.5px;
     }
+    .autoBadge { display: inline-block; font-size: 9px; font-weight: bold; background: var(--accent); color: #fff; border-radius: 100px; padding: 1px 6px; margin-left: 5px; vertical-align: middle; }
 
-    .preset-row { display: flex; align-items: center; gap: 8px; padding: 9px 2px; border-bottom: 1px solid var(--border); font-size: 12px; }
-    .preset-row:last-child { border-bottom: none; }
+    .preset-item { border-bottom: 1px solid var(--border); }
+    .preset-item:last-child { border-bottom: none; }
+    .preset-row { display: flex; align-items: center; gap: 8px; padding: 9px 2px; font-size: 12px; cursor: pointer; }
     .preset-row .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
     .preset-row .meta { flex: 1; }
     .preset-row .meta .name { font-weight: bold; }
     .preset-row .meta .cat { font-size: 10.5px; color: var(--faint); }
+    .preset-row .meta .forecast { font-size: 10.5px; color: var(--accent-ink); font-weight: bold; margin-top: 2px; }
     .preset-row .act { font-size: 11px; color: var(--accent-ink); font-weight: bold; background: none; border: none; padding: 4px 6px; width: auto; margin: 0; }
     .preset-row .act.danger { color: var(--danger); }
+    .preset-detail { display: none; padding: 4px 2px 14px 18px; }
+    .preset-detail.open { display: block; }
+    .preset-detail .checkRow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: bold; }
+    .preset-detail .checkRow input { width: auto; margin: 0; }
+    .termFields { display: none; border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px; margin-top: 10px; background: var(--accent-soft); }
+    .termFields.open { display: block; }
+    .termFields .note { font-size: 10.5px; color: var(--muted); margin-top: 8px; line-height: 1.6; }
+    .termFields label { margin-top: 10px; font-size: 12px; }
+    .termFields label:first-child { margin-top: 0; }
 
     .link-row { text-align: center; font-size: 12px; color: var(--muted); margin-top: 10px; }
     .link-row a { color: var(--accent-ink); font-weight: bold; text-decoration: none; }
@@ -314,11 +326,16 @@
           html += '<div class="form-section-label">' + person + 'の' + g.label + '</div>';
           personItems.forEach((item) => {
             const prevAmount = screenData.latestAmountByItem[item.id];
+            const hasForecast = item.forecastValue != null;
+            const prefillAmount = hasForecast ? item.forecastValue : prevAmount;
+            const prevLabel = hasForecast
+              ? '条件から自動計算・必要なら上書き可'
+              : (prevAmount != null ? '前回 ' + yen(prevAmount) : '前回の記録なし');
             html += '<div class="item-row" data-item-id="' + item.id + '">' +
               '<span class="dot" style="background:' + dotColorFor(item) + '"></span>' +
-              '<div class="meta"><div class="name">' + item.category + '・' + item.institution + '</div>' +
-              '<div class="prev">' + (prevAmount != null ? '前回 ' + yen(prevAmount) : '前回の記録なし') + '</div></div>' +
-              '<input type="number" class="amount-box" value="' + (prevAmount != null ? prevAmount : '') + '" placeholder="金額" />' +
+              '<div class="meta"><div class="name">' + item.category + '・' + item.institution + (hasForecast ? '<span class="autoBadge">自動計算</span>' : '') + '</div>' +
+              '<div class="prev">' + prevLabel + '</div></div>' +
+              '<input type="number" class="amount-box" value="' + (prefillAmount != null ? prefillAmount : '') + '" placeholder="金額" />' +
               '</div>';
           });
         });
@@ -359,24 +376,101 @@
       showView('viewMain');
     }
 
+    function forecastLabelFor(item) {
+      if (item.forecastValue == null) return '';
+      const isLiability = item.item_type === 'liability';
+      const kind = isLiability ? '予測残高' : '予測評価額';
+      const dateLabel = isLiability
+        ? (item.maturityDate ? '完済予定 ' + item.maturityDate.year + '年' + item.maturityDate.month + '月' : '')
+        : (item.maturityDate ? '満期予定 ' + item.maturityDate.year + '年' + item.maturityDate.month + '月' : '');
+      return '本日時点の' + kind + '　約' + yen(item.forecastValue) + (dateLabel ? '（' + dateLabel + '）' : '');
+    }
+
+    function termFieldLabels(itemType) {
+      return itemType === 'liability'
+        ? { years: '返済期間（年）', date: '借入開始日' }
+        : { years: '預入期間（年）', date: '預入日' };
+    }
+
     function renderPresetList() {
       const el = document.getElementById('presetList');
       const items = screenData.items || [];
       if (items.length === 0) { el.innerHTML = '<p class="muted">まだ登録されていません。</p>'; return; }
-      el.innerHTML = items.map((item) =>
-        '<div class="preset-row">' +
-        '<span class="dot" style="background:' + dotColorFor(item) + (item.active ? '' : ';opacity:.35') + '"></span>' +
-        '<div class="meta"><div class="name">' + item.person + '・' + item.category + '・' + item.institution + (item.active ? '' : '（無効）') + '</div></div>' +
-        (item.active ? '<button class="act danger" data-deactivate="' + item.id + '">無効化</button>' : '') +
-        '</div>'
-      ).join('');
+      el.innerHTML = items.map((item) => {
+        const forecastHtml = item.forecastValue != null ? '<div class="forecast">' + forecastLabelFor(item) + '</div>' : '';
+        const t = item.termConditions;
+        const lbl = termFieldLabels(item.item_type);
+        return '<div class="preset-item" data-item-id="' + item.id + '">' +
+          '<div class="preset-row" data-toggle-terms="' + item.id + '">' +
+          '<span class="dot" style="background:' + dotColorFor(item) + (item.active ? '' : ';opacity:.35') + '"></span>' +
+          '<div class="meta"><div class="name">' + item.person + '・' + item.category + '・' + item.institution + (item.active ? '' : '（無効）') + '</div>' + forecastHtml + '</div>' +
+          '<button class="act" type="button">条件</button>' +
+          (item.active ? '<button class="act danger" data-deactivate="' + item.id + '">無効化</button>' : '') +
+          '</div>' +
+          '<div class="preset-detail" data-detail-for="' + item.id + '">' +
+          '<label class="checkRow"><input type="checkbox" class="termEnabled"' + (t ? ' checked' : '') + ' /> 詳細条件を設定して自動計算する</label>' +
+          '<div class="termFields' + (t ? ' open' : '') + '">' +
+          '<label>元金</label><input type="number" class="termPrincipal" value="' + (t ? t.principal : '') + '" />' +
+          '<label>年利率（%）</label><input type="number" step="0.01" class="termRate" value="' + (t ? t.annual_rate_percent : '') + '" />' +
+          '<label class="termYearsLabel">' + lbl.years + '</label><input type="number" class="termYears" value="' + (t ? t.term_years : '') + '" />' +
+          '<label class="termStartLabel">' + lbl.date + '</label><input type="date" class="termStartDate" value="' + (t ? t.start_date : '') + '" />' +
+          '<div class="note">' + (item.item_type === 'liability'
+            ? '元利均等返済の標準計算式で算出する目安です。繰上返済・金利変動があると実際の残高とズレます。ズレたら記録画面で金額を上書きしてください（設定自体は消えません）。'
+            : '単利で満期までの評価額を按分する目安です。実際の利率・複利方式とズレる場合があります。ズレたら記録画面で金額を上書きしてください（設定自体は消えません）。') + '</div>' +
+          '</div>' +
+          '<button class="small saveTermsBtn" type="button" data-item-id="' + item.id + '">保存</button>' +
+          '</div>' +
+          '</div>';
+      }).join('');
+
       el.querySelectorAll('[data-deactivate]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
           if (!confirm('この項目を無効化しますか？（過去の記録は残ります）')) return;
           await window.kakeiboData.deactivateAssetItem(btn.getAttribute('data-deactivate'));
           screenData = await window.kakeiboData.getAssetScreenInitialData();
           renderPresetList();
           renderAll();
+        });
+      });
+      el.querySelectorAll('[data-toggle-terms]').forEach((row) => {
+        row.addEventListener('click', () => {
+          const id = row.getAttribute('data-toggle-terms');
+          const detail = el.querySelector('[data-detail-for="' + id + '"]');
+          detail.classList.toggle('open');
+        });
+      });
+      el.querySelectorAll('.termEnabled').forEach((chk) => {
+        chk.addEventListener('change', (e) => {
+          e.stopPropagation();
+          chk.closest('.preset-detail').querySelector('.termFields').classList.toggle('open', chk.checked);
+        });
+      });
+      el.querySelectorAll('.preset-detail').forEach((detail) => {
+        detail.addEventListener('click', (e) => e.stopPropagation());
+      });
+      el.querySelectorAll('.saveTermsBtn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const itemId = btn.getAttribute('data-item-id');
+          const detail = btn.closest('.preset-detail');
+          const enabled = detail.querySelector('.termEnabled').checked;
+          try {
+            if (!enabled) {
+              await window.kakeiboData.removeAssetTermConditions(itemId);
+            } else {
+              const principal = detail.querySelector('.termPrincipal').value;
+              const annualRatePercent = detail.querySelector('.termRate').value;
+              const termYears = detail.querySelector('.termYears').value;
+              const startDate = detail.querySelector('.termStartDate').value;
+              if (!principal || annualRatePercent === '' || !termYears || !startDate) { alert('すべての項目を入力してください'); return; }
+              await window.kakeiboData.saveAssetTermConditions(itemId, { principal, annualRatePercent, termYears, startDate });
+            }
+            screenData = await window.kakeiboData.getAssetScreenInitialData();
+            renderPresetList();
+            renderAll();
+          } catch (err) {
+            alert('エラー: ' + err.message);
+          }
         });
       });
     }
