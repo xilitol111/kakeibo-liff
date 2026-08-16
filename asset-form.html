@@ -388,8 +388,8 @@
 
     function termFieldLabels(itemType) {
       return itemType === 'liability'
-        ? { years: '返済期間（年）', date: '借入開始日' }
-        : { years: '預入期間（年）', date: '預入日' };
+        ? { years: '返済期間（年）', date: '返済開始月', dateInputType: 'month' }
+        : { years: '預入期間（年）', date: '預入日', dateInputType: 'date' };
     }
 
     function renderPresetList() {
@@ -413,7 +413,7 @@
           '<label>元金</label><input type="number" class="termPrincipal" value="' + (t ? t.principal : '') + '" />' +
           '<label>年利率（%）</label><input type="number" step="0.01" class="termRate" value="' + (t ? t.annual_rate_percent : '') + '" />' +
           '<label class="termYearsLabel">' + lbl.years + '</label><input type="number" class="termYears" value="' + (t ? t.term_years : '') + '" />' +
-          '<label class="termStartLabel">' + lbl.date + '</label><input type="date" class="termStartDate" value="' + (t ? t.start_date : '') + '" />' +
+          '<label class="termStartLabel">' + lbl.date + '</label><input type="' + lbl.dateInputType + '" class="termStartDate" value="' + (t ? (lbl.dateInputType === 'month' ? t.start_date.slice(0, 7) : t.start_date) : '') + '" />' +
           '<div class="note">' + (item.item_type === 'liability'
             ? '元利均等返済の標準計算式で算出する目安です。繰上返済・金利変動があると実際の残高とズレます。ズレたら記録画面で金額を上書きしてください（設定自体は消えません）。'
             : '単利で満期までの評価額を按分する目安です。実際の利率・複利方式とズレる場合があります。ズレたら記録画面で金額を上書きしてください（設定自体は消えません）。') + '</div>' +
@@ -461,8 +461,10 @@
               const principal = detail.querySelector('.termPrincipal').value;
               const annualRatePercent = detail.querySelector('.termRate').value;
               const termYears = detail.querySelector('.termYears').value;
-              const startDate = detail.querySelector('.termStartDate').value;
+              const startInput = detail.querySelector('.termStartDate');
+              let startDate = startInput.value;
               if (!principal || annualRatePercent === '' || !termYears || !startDate) { alert('すべての項目を入力してください'); return; }
+              if (startInput.type === 'month') startDate += '-01'; // 返済開始月→その月の1日として保存
               await window.kakeiboData.saveAssetTermConditions(itemId, { principal, annualRatePercent, termYears, startDate });
             }
             screenData = await window.kakeiboData.getAssetScreenInitialData();
