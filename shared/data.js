@@ -1367,6 +1367,31 @@
     return upsertAssetSnapshotBatch(asOfDate, entries);
   }
 
+  // ---- サービス利用状況モニタリング ----
+  // period_keyはEdge Function側（supabase/functions/_shared/gemini.ts等）が
+  // new Date().toISOString().slice(...)で生成しているUTC基準の日付/年月と揃える必要があるため、
+  // ここだけ他画面のようなAsia/Tokyo基準のfmt()は使わず、あえてUTC基準で作る
+  function utcDayKey_() { return new Date().toISOString().slice(0, 10); }
+  function utcMonthKey_() { return new Date().toISOString().slice(0, 7); }
+
+  async function fetchDbSizeBytes() {
+    const { data, error } = await sb().rpc('get_db_size_bytes');
+    if (error) throw new Error(error.message);
+    return Number(data);
+  }
+  async function fetchServiceUsageCounter_(service, periodKey) {
+    const rows = unwrap(await sb().from('service_usage_counters').select('count').eq('service', service).eq('period_key', periodKey));
+    return rows.length > 0 ? Number(rows[0].count) : 0;
+  }
+  async function getUsageMonitoringData() {
+    const [dbSizeBytes, edgeFunctionInvocations, geminiRequests] = await Promise.all([
+      fetchDbSizeBytes(),
+      fetchServiceUsageCounter_('edge_function_invocations', utcMonthKey_()),
+      fetchServiceUsageCounter_('gemini_requests', utcDayKey_())
+    ]);
+    return { dbSizeBytes, edgeFunctionInvocations, geminiRequests };
+  }
+
   window.kakeiboData = {
     fmt, todayStr,
     // settlement
@@ -1396,6 +1421,8 @@
     getAssetScreenInitialData, saveAssetItem, deactivateAssetItem, saveAssetSnapshot, fetchAssetItems,
     saveAssetTermConditions, removeAssetTermConditions,
     getLoanDetailScreenData, saveLoanRateChange, removeLoanRateChange,
-    saveAssetGoal, removeAssetGoal
+    saveAssetGoal, removeAssetGoal,
+    // usage monitoring
+    getUsageMonitoringData
   };
 })();
