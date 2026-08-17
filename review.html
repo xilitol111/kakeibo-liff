@@ -44,8 +44,14 @@
 
     .fieldRow { margin-top: 8px; }
     .fieldRow label { display: block; font-size: 10.5px; color: var(--muted); margin-bottom: 3px; }
-    select { width: 100%; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 13px; box-sizing: border-box; }
+    select, input.field { width: 100%; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 13px; box-sizing: border-box; font-family: inherit; }
     .catGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .detailsToggle { background: none; border: none; color: var(--muted); font-size: 11px; padding: 6px 0 0; text-decoration: underline; }
+    .detailsBox { display: none; margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--border); }
+    .detailsBox.open { display: block; }
+    .savedTick { font-size: 10.5px; color: var(--accent-ink); margin-left: 6px; opacity: 0; transition: opacity 0.2s; }
+    .savedTick.show { opacity: 1; }
 
     .btnRow { display: flex; gap: 8px; margin-top: 10px; }
     .btnRow button { flex: 1; padding: 8px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--accent-soft); color: var(--ink); font-weight: bold; font-size: 13px; }
@@ -82,6 +88,7 @@
     function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
     function fmtYen(n) { const v = Number(n); return (v < 0 ? '-¥' : '¥') + Math.abs(v).toLocaleString(); }
     function fmtDate(iso) { if (!iso) return ''; const parts = iso.split('-'); return parts[1] + '/' + parts[2]; }
+    const SOURCE_LABELS = { gmail_auto: 'カード自動', recurring_auto: '定期収支', manual_import: '移行データ', db_transactions_import: '移行データ', line_manual: '手入力' };
     function setStatus(text, kind) {
       const el = document.getElementById('status');
       el.textContent = text;
@@ -110,6 +117,46 @@
       });
       return html;
     }
+    function buildEventTagOptions(selected) {
+      let html = '<option value=""' + (!selected ? ' selected' : '') + '>―</option>';
+      eventNames.forEach((name) => {
+        html += '<option value="' + esc(name) + '"' + (name === selected ? ' selected' : '') + '>' + esc(name) + '</option>';
+      });
+      return html;
+    }
+    function buildPaidByOptions(selected) {
+      let html = '<option value=""' + (!selected ? ' selected' : '') + '>未設定</option>';
+      window.KAKEIBO_FAMILY_MEMBERS.forEach((m) => { html += '<option value="' + m + '"' + (m === selected ? ' selected' : '') + '>' + m + '</option>'; });
+      return html;
+    }
+    function buildBilledToOptions(selected) {
+      let html = '<option value="共用"' + (selected === '共用' || !selected ? ' selected' : '') + '>共用</option>';
+      window.KAKEIBO_FAMILY_MEMBERS.forEach((m) => { html += '<option value="' + m + '"' + (m === selected ? ' selected' : '') + '>' + m + '（貸し借り）</option>'; });
+      return html;
+    }
+    // 確認対象の項目（未分類カードならカテゴリ・サブカテゴリ、イベント判定保留カードなら
+    // イベント）以外の全パラメータを、折りたたみ式の詳細欄として表示・その場編集できるようにする
+    function buildOtherFieldsHtml(tx, opts) {
+      opts = opts || {};
+      let html = '<div class="fieldRow"><label>日付</label><input type="date" class="field" data-field="occurred_at" value="' + esc(tx.occurred_at || '') + '" /></div>';
+      html += '<div class="fieldRow"><label>名称</label><input type="text" class="field" data-field="name" value="' + esc(tx.name || '') + '" /></div>';
+      html += '<div class="fieldRow"><label>金額</label><input type="number" class="field" data-field="amount" value="' + esc(tx.amount) + '" /></div>';
+      html += '<div class="catGrid">' +
+        '<div class="fieldRow"><label>支払者</label><select data-field="paid_by">' + buildPaidByOptions(tx.paid_by) + '</select></div>' +
+        '<div class="fieldRow"><label>負担先</label><select data-field="billed_to">' + buildBilledToOptions(tx.billed_to) + '</select></div>' +
+        '</div>';
+      if (opts.showCategory) {
+        html += '<div class="catGrid">' +
+          '<div class="fieldRow"><label>カテゴリ</label><select data-field="category" class="otherCatSelect">' + buildCategoryOptions() + '</select></div>' +
+          '<div class="fieldRow"><label>サブカテゴリ</label><select data-field="subcategory" class="otherSubSelect">' + buildSubcategoryOptions(tx.category) + '</select></div>' +
+          '</div>';
+      }
+      if (opts.showEvent) {
+        html += '<div class="fieldRow"><label>イベント</label><select data-field="event_tag">' + buildEventTagOptions(tx.event_tag) + '</select></div>';
+      }
+      html += '<div class="fieldRow"><label>出所（変更不可）</label><div style="font-size:12.5px;">' + esc(SOURCE_LABELS[tx.source_channel] || tx.source_channel || '') + '</div></div>';
+      return html;
+    }
 
     function renderContent() {
       const totalCount = unclassified.length + eventReview.length;
@@ -133,6 +180,8 @@
             '<div class="fieldRow"><label>サブカテゴリ</label><select class="subSelect"><option value="">―</option></select></div>' +
             '</div>' +
             '<div class="btnRow"><button class="primary saveOnly saveCatBtn" disabled>保存</button></div>' +
+            '<button type="button" class="detailsToggle">他の項目を見る・編集する ▾</button>' +
+            '<div class="detailsBox">' + buildOtherFieldsHtml(tx, { showEvent: true }) + '<span class="savedTick">✓ 保存しました</span></div>' +
             '<div class="cardErr" style="display:none;"></div>' +
             '</div>';
         });
@@ -153,6 +202,8 @@
             '<button class="primary confirmEventBtn">このイベントで確定</button>' +
             '<button class="noevent noEventBtn">イベントなしで確定</button>' +
             '</div>' +
+            '<button type="button" class="detailsToggle">他の項目を見る・編集する ▾</button>' +
+            '<div class="detailsBox">' + buildOtherFieldsHtml(tx, { showCategory: true }) + '<span class="savedTick">✓ 保存しました</span></div>' +
             '<div class="cardErr" style="display:none;"></div>' +
             '</div>';
         });
@@ -177,6 +228,45 @@
         card.querySelector('.confirmEventBtn').addEventListener('click', () => saveEventReview(card, false));
         card.querySelector('.noEventBtn').addEventListener('click', () => saveEventReview(card, true));
       });
+      wireDetailsBoxes();
+    }
+
+    // 「他の項目を見る・編集する」欄。table.htmlと同じ「フィールドごとに変更したらその場で
+    // 即保存」パターンを踏襲する（この画面用の別の保存ボタンは用意しない）
+    function wireDetailsBoxes() {
+      document.querySelectorAll('.reviewCard').forEach((card) => {
+        const toggle = card.querySelector('.detailsToggle');
+        const box = card.querySelector('.detailsBox');
+        if (!toggle || !box) return;
+        toggle.addEventListener('click', () => {
+          const open = box.classList.toggle('open');
+          toggle.textContent = open ? '他の項目を閉じる ▴' : '他の項目を見る・編集する ▾';
+        });
+        const cardId = card.dataset.unclassifiedId || card.dataset.txId;
+        const otherCat = box.querySelector('.otherCatSelect');
+        const otherSub = box.querySelector('.otherSubSelect');
+        if (otherCat && otherSub) {
+          otherCat.addEventListener('change', () => {
+            otherSub.innerHTML = otherCat.value ? buildSubcategoryOptions(otherCat.value) : '<option value="">―</option>';
+            saveDetailField(card, box, cardId, 'category', otherCat.value);
+          });
+        }
+        box.querySelectorAll('[data-field]').forEach((el) => {
+          if (el === otherCat) return; // カテゴリはサブカテゴリ再構築とセットで上のハンドラが保存する
+          el.addEventListener('change', () => saveDetailField(card, box, cardId, el.dataset.field, el.value));
+        });
+      });
+    }
+
+    async function saveDetailField(card, box, id, field, value) {
+      try {
+        await window.kakeiboData.updateTransactionField(id, field, value);
+        const tick = box.querySelector('.savedTick');
+        tick.classList.add('show');
+        setTimeout(() => tick.classList.remove('show'), 1200);
+      } catch (err) {
+        showCardErr(card, err.message);
+      }
     }
 
     function showCardErr(card, message) {

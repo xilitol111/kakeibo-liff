@@ -237,11 +237,11 @@
   }
 
   async function fetchUnclassifiedTransactions() {
-    return unwrap(await sb().from('transactions').select('id,occurred_at,name,amount,source_channel').eq('category', '未分類').order('occurred_at', { ascending: true }));
+    return unwrap(await sb().from('transactions').select('id,occurred_at,name,amount,source_channel,paid_by,billed_to,event_tag').eq('category', '未分類').order('occurred_at', { ascending: true }));
   }
   async function fetchEventReviewQueue() {
     return unwrap(await sb().from('event_tag_review_queue')
-      .select('id,transaction_id,suggested_event_name,reason,created_at,transactions(name,amount,occurred_at,category,subcategory)')
+      .select('id,transaction_id,suggested_event_name,reason,created_at,transactions(name,amount,occurred_at,category,subcategory,paid_by,billed_to,source_channel)')
       .order('created_at', { ascending: true }));
   }
   async function fetchAutoImportsSince(sinceTimestamp) {
