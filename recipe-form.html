@@ -33,6 +33,23 @@
     textarea.field { resize: vertical; min-height: 60px; line-height: 1.6; }
     .aiBtn { width: 100%; margin-top: 10px; background: var(--panel); color: var(--info-ink); border: 1px solid var(--info-border); border-radius: 10px; padding: 11px; font-size: 13px; font-weight: bold; }
     .aiBtn:disabled { opacity: 0.6; }
+
+    .modeTabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .modeTab { flex: 1; text-align: center; padding: 8px 4px; border-radius: 8px; font-size: 12.5px; font-weight: bold; border: 1px solid var(--info-border); background: transparent; color: var(--info-ink); cursor: pointer; }
+    .modeTab.active { background: var(--panel); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .modeTab:not(.active) { opacity: 0.6; }
+    .textPane, .photoPane { display: none; }
+    .textPane.active, .photoPane.active { display: block; }
+
+    .photoPickBtn { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 1.5px dashed var(--info-border); border-radius: 10px; background: var(--panel); padding: 24px 12px; color: var(--info-ink); font-size: 12.5px; font-weight: bold; }
+    .photoPickBtn .camIcon { font-size: 26px; }
+    .photoPickBtn .sub { font-size: 10.5px; color: var(--muted); font-weight: normal; }
+    .photoPreviewWrap { display: none; }
+    .photoPreviewWrap.hasPhoto { display: block; }
+    .photoThumb { width: 100%; border-radius: 10px; border: 1px solid var(--border); display: block; max-height: 220px; object-fit: cover; }
+    .photoActions { display: flex; gap: 8px; margin-top: 8px; }
+    .retakeBtn { flex: 1; background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 9px; padding: 9px; font-size: 12px; }
+
     label.fieldLbl { font-size: 11px; color: var(--faint); display: block; margin: 18px 0 5px; }
     label.fieldLbl:first-of-type { margin-top: 0; }
     .editIngRow { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
@@ -52,9 +69,36 @@
   <div class="detailTtl" id="pageTtl">レシピを登録</div>
 
   <div class="previewBox">
-    <div class="previewLbl">🔗 URLやレシピの文章を貼るとAIが自動入力（任意・使わなくてもOK）</div>
-    <textarea class="field" id="aiInput" placeholder="レシピサイトのURL、またはレシピの文章をここに貼り付け"></textarea>
-    <button class="aiBtn" id="aiBtn">✨ AIで読み込んで下のフォームに反映</button>
+    <div class="previewLbl">✨ AIで自動入力（任意・使わなくてもOK）</div>
+
+    <div class="modeTabs">
+      <button type="button" class="modeTab active" id="tabText">🔗 URL・文章</button>
+      <button type="button" class="modeTab" id="tabPhoto">📷 写真</button>
+    </div>
+
+    <div class="textPane active" id="paneText">
+      <textarea class="field" id="aiInput" placeholder="レシピサイトのURL、またはレシピの文章をここに貼り付け"></textarea>
+      <button class="aiBtn" id="aiBtn">✨ AIで読み込んで下のフォームに反映</button>
+    </div>
+
+    <div class="photoPane" id="panePhoto">
+      <input type="file" id="photoFile" accept="image/*" capture="environment" style="display:none;" />
+      <div id="pickState">
+        <button type="button" class="photoPickBtn" id="photoPickBtn">
+          <span class="camIcon">📷</span>
+          <span>レシピカード・料理本のページを撮影</span>
+          <span class="sub">タップしてカメラを起動、またはアルバムから選択</span>
+        </button>
+      </div>
+      <div class="photoPreviewWrap" id="previewState">
+        <img class="photoThumb" id="photoThumb" />
+        <button class="aiBtn" id="photoAiBtn" style="margin-top:8px;">✨ この写真を読み込んで下のフォームに反映</button>
+        <div class="photoActions">
+          <button type="button" class="retakeBtn" id="retakePhotoBtn">撮り直す</button>
+        </div>
+      </div>
+    </div>
+
     <div class="status" id="aiStatus"></div>
   </div>
 
@@ -114,16 +158,13 @@
       ingredients.forEach((i) => addIngredientRow(i.name, i.quantity));
     }
 
-    document.getElementById('aiBtn').addEventListener('click', async () => {
-      const rawInput = document.getElementById('aiInput').value.trim();
+    async function runExtraction(btn, extractFn) {
       const status = document.getElementById('aiStatus');
-      if (!rawInput) { status.textContent = 'URLかレシピの文章を貼り付けてください'; status.className = 'status err'; return; }
-      const btn = document.getElementById('aiBtn');
       btn.disabled = true;
       status.textContent = '読み込み中...（数秒かかります）';
       status.className = 'status';
       try {
-        const extracted = await window.kakeiboData.extractRecipeFromInput(rawInput);
+        const extracted = await extractFn();
         if (!extracted.name && (!extracted.ingredients || extracted.ingredients.length === 0)) {
           status.textContent = 'レシピの内容を読み取れませんでした。手入力で登録してください。';
           status.className = 'status err';
@@ -139,6 +180,85 @@
       } finally {
         btn.disabled = false;
       }
+    }
+
+    document.getElementById('aiBtn').addEventListener('click', () => {
+      const rawInput = document.getElementById('aiInput').value.trim();
+      const status = document.getElementById('aiStatus');
+      if (!rawInput) { status.textContent = 'URLかレシピの文章を貼り付けてください'; status.className = 'status err'; return; }
+      runExtraction(document.getElementById('aiBtn'), () => window.kakeiboData.extractRecipeFromInput(rawInput));
+    });
+
+    // --- 写真からの読み込み ---
+    let pendingPhoto = null; // { base64, mimeType }
+
+    function setMode(mode) {
+      document.getElementById('tabText').classList.toggle('active', mode === 'text');
+      document.getElementById('tabPhoto').classList.toggle('active', mode === 'photo');
+      document.getElementById('paneText').classList.toggle('active', mode === 'text');
+      document.getElementById('panePhoto').classList.toggle('active', mode === 'photo');
+      document.getElementById('aiStatus').textContent = '';
+    }
+    document.getElementById('tabText').addEventListener('click', () => setMode('text'));
+    document.getElementById('tabPhoto').addEventListener('click', () => setMode('photo'));
+
+    document.getElementById('photoPickBtn').addEventListener('click', () => {
+      document.getElementById('photoFile').click();
+    });
+
+    // スマホのカメラ写真は数MB〜十数MBになりうるため、Canvasで長辺1600px・JPEG品質0.82に
+    // 圧縮してから送る（通信時間短縮とGemini側の20MBリクエスト上限への安全マージン確保が目的）
+    function compressImageToBase64_(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+        reader.onload = () => {
+          img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+          img.onload = () => {
+            const maxSide = 1600;
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+            const w = Math.round(img.width * scale);
+            const h = Math.round(img.height * scale);
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+            resolve({ dataUrl, base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    document.getElementById('photoFile').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const status = document.getElementById('aiStatus');
+      try {
+        const { dataUrl, base64, mimeType } = await compressImageToBase64_(file);
+        pendingPhoto = { base64, mimeType };
+        document.getElementById('photoThumb').src = dataUrl;
+        document.getElementById('pickState').style.display = 'none';
+        document.getElementById('previewState').classList.add('hasPhoto');
+        status.textContent = '';
+      } catch (err) {
+        status.textContent = 'エラー: ' + err.message;
+        status.className = 'status err';
+      }
+    });
+
+    document.getElementById('retakePhotoBtn').addEventListener('click', () => {
+      pendingPhoto = null;
+      document.getElementById('photoFile').value = '';
+      document.getElementById('pickState').style.display = 'block';
+      document.getElementById('previewState').classList.remove('hasPhoto');
+    });
+
+    document.getElementById('photoAiBtn').addEventListener('click', () => {
+      if (!pendingPhoto) return;
+      runExtraction(document.getElementById('photoAiBtn'), () => window.kakeiboData.extractRecipeFromImage(pendingPhoto.base64, pendingPhoto.mimeType));
     });
 
     document.getElementById('saveBtn').addEventListener('click', async () => {

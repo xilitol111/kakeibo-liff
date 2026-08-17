@@ -1068,6 +1068,19 @@
     if (!res.ok) throw new Error(data.error || 'recipe-extract failed');
     return data;
   }
+  // 写真（レシピカード・料理本のページ撮影）からの読み込み。imageBase64/imageMimeTypeを渡す点のみ
+  // extractRecipeFromInputと異なる（recipe-extract側でinlineDataパートとしてGeminiに渡される）
+  async function extractRecipeFromImage(imageBase64, imageMimeType) {
+    const { data: { session } } = await sb().auth.getSession();
+    const res = await fetch('https://gduznhcuyjxxyuhfexek.supabase.co/functions/v1/recipe-extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+      body: JSON.stringify({ imageBase64, imageMimeType })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'recipe-extract failed');
+    return data;
+  }
   // 材料の買い物リスト追加は、既存のshopping-classify Edge Function（重複チェック＋Geminiでの
   // カテゴリ分類込み）をそのまま1品ずつ並列で呼び出す。新しい挿入ロジックを別途持たない
   async function addRecipeIngredientsToShoppingList(names) {
@@ -1416,7 +1429,7 @@
     // shopping list
     getShoppingScreenData, addShoppingItemFromLiff, toggleShoppingItemPurchased, removeShoppingItem,
     // recipes
-    fetchRecipes, fetchRecipeDetail, saveRecipe, deleteRecipe, extractRecipeFromInput, addRecipeIngredientsToShoppingList,
+    fetchRecipes, fetchRecipeDetail, saveRecipe, deleteRecipe, extractRecipeFromInput, extractRecipeFromImage, addRecipeIngredientsToShoppingList,
     // asset management
     getAssetScreenInitialData, saveAssetItem, deactivateAssetItem, saveAssetSnapshot, fetchAssetItems,
     saveAssetTermConditions, removeAssetTermConditions,
