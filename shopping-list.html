@@ -97,7 +97,7 @@
       return (d.getMonth() + 1) + '/' + d.getDate();
     }
     function itemMetaText(item) {
-      const parts = [fmtDate(item.created_at)];
+      const parts = ['記入:' + fmtDate(item.created_at)];
       if (item.added_by) parts.push(item.added_by);
       const days = item.created_at ? Math.floor((Date.now() - new Date(item.created_at).getTime()) / 86400000) : 0;
       if (days >= 3) parts.push(days + '日前〜');
@@ -150,7 +150,7 @@
         row.innerHTML =
           '<div class="checkbox checked" data-id="' + item.id + '" role="checkbox" aria-checked="true" tabindex="0" aria-label="' + esc(item.name) + 'を未購入に戻す"></div>' +
           '<div class="itemName done">' + esc(item.name) + '</div>' +
-          '<div class="itemMeta">' + esc(item.category || '未分類') + '・' + fmtDate(item.purchased_at) + (item.added_by ? '・記入:' + esc(item.added_by) : '') + '</div>' +
+          '<div class="itemMeta">' + esc(item.category || '未分類') + '・記入:' + fmtDate(item.created_at) + '・完了:' + fmtDate(item.purchased_at) + (item.added_by ? '・' + esc(item.added_by) : '') + '</div>' +
           '<button class="delBtn" data-id="' + item.id + '" type="button" aria-label="' + esc(item.name) + 'を削除">✕</button>';
         el.appendChild(row);
       });
