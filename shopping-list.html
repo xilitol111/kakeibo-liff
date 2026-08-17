@@ -96,10 +96,12 @@
       const d = new Date(iso);
       return (d.getMonth() + 1) + '/' + d.getDate();
     }
-    function staleDaysBadge(createdAt) {
-      if (!createdAt) return '';
-      const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
-      return days >= 3 ? '<span class="itemMeta">' + days + '日前〜</span>' : '';
+    function itemMetaText(item) {
+      const parts = [fmtDate(item.created_at)];
+      if (item.added_by) parts.push(item.added_by);
+      const days = item.created_at ? Math.floor((Date.now() - new Date(item.created_at).getTime()) / 86400000) : 0;
+      if (days >= 3) parts.push(days + '日前〜');
+      return parts.join('・');
     }
     function setStatus(text, kind) {
       const el = document.getElementById('status');
@@ -128,7 +130,7 @@
           row.innerHTML =
             '<div class="checkbox" data-id="' + item.id + '" role="checkbox" aria-checked="false" tabindex="0" aria-label="' + esc(item.name) + 'を購入済みにする"></div>' +
             '<div class="itemName">' + esc(item.name) + (item.quantity ? '<span class="itemQty">（' + esc(item.quantity) + '）</span>' : '') + '</div>' +
-            staleDaysBadge(item.created_at) +
+            '<div class="itemMeta">' + esc(itemMetaText(item)) + '</div>' +
             '<button class="delBtn" data-id="' + item.id + '" type="button" aria-label="' + esc(item.name) + 'を削除">✕</button>';
           el.appendChild(row);
         });
@@ -148,7 +150,7 @@
         row.innerHTML =
           '<div class="checkbox checked" data-id="' + item.id + '" role="checkbox" aria-checked="true" tabindex="0" aria-label="' + esc(item.name) + 'を未購入に戻す"></div>' +
           '<div class="itemName done">' + esc(item.name) + '</div>' +
-          '<div class="itemMeta">' + esc(item.category || '未分類') + '・' + fmtDate(item.purchased_at) + '</div>' +
+          '<div class="itemMeta">' + esc(item.category || '未分類') + '・' + fmtDate(item.purchased_at) + (item.added_by ? '・記入:' + esc(item.added_by) : '') + '</div>' +
           '<button class="delBtn" data-id="' + item.id + '" type="button" aria-label="' + esc(item.name) + 'を削除">✕</button>';
         el.appendChild(row);
       });
