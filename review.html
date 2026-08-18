@@ -53,6 +53,18 @@
     .savedTick { font-size: 10.5px; color: var(--accent-ink); margin-left: 6px; opacity: 0; transition: opacity 0.2s; }
     .savedTick.show { opacity: 1; }
 
+    .modalOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+    .modalOverlay.show { display: flex; }
+    .modalCard { background: var(--panel); border-radius: 14px; padding: 18px; width: 100%; max-width: 320px; box-shadow: 0 8px 30px rgba(0,0,0,0.25); }
+    .modalCard h3 { font-size: 14.5px; margin: 0 0 4px; }
+    .modalCard .sub { font-size: 11.5px; color: var(--faint); margin-bottom: 14px; line-height: 1.5; }
+    .modalCard label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .modalBtnRow { display: flex; gap: 8px; margin-top: 16px; }
+    .modalBtnRow button { flex: 1; padding: 10px; border-radius: 9px; border: 1px solid var(--border); background: var(--accent-soft); color: var(--ink); font-weight: bold; font-size: 13px; }
+    .modalBtnRow button.primary { background: var(--accent); border-color: transparent; color: #fff; }
+    .modalBtnRow button.primary:disabled { opacity: 0.5; }
+    .modalErr { color: var(--danger); font-size: 11.5px; margin-top: 8px; }
+
     .btnRow { display: flex; gap: 8px; margin-top: 10px; }
     .btnRow button { flex: 1; padding: 8px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--accent-soft); color: var(--ink); font-weight: bold; font-size: 13px; }
     .btnRow button.primary { background: var(--accent); border-color: transparent; color: #fff; }
@@ -79,6 +91,20 @@
   </div>
 
   <div id="status"></div>
+
+  <div class="modalOverlay" id="newEventOverlay">
+    <div class="modalCard">
+      <h3>新しいイベントを作成</h3>
+      <div class="sub">名前だけで作成できます。予算額や期間はあとから予算画面で設定できます。</div>
+      <label>イベント名</label>
+      <input class="field" id="newEventName" placeholder="例：忘年会" />
+      <div class="modalErr" id="newEventErr" style="display:none;"></div>
+      <div class="modalBtnRow">
+        <button type="button" id="newEventCancelBtn">キャンセル</button>
+        <button type="button" class="primary" id="newEventCreateBtn" disabled>作成する</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     let unclassified = [];
@@ -115,6 +141,7 @@
       eventNames.forEach((name) => {
         html += '<option value="' + esc(name) + '"' + (name === selected ? ' selected' : '') + '>' + esc(name) + (name === selected ? '（AIの推測）' : '') + '</option>';
       });
+      html += '<option value="__new__">＋ 新規イベントを作成</option>';
       return html;
     }
     function buildEventTagOptions(selected) {
@@ -122,8 +149,61 @@
       eventNames.forEach((name) => {
         html += '<option value="' + esc(name) + '"' + (name === selected ? ' selected' : '') + '>' + esc(name) + '</option>';
       });
+      html += '<option value="__new__">＋ 新規イベントを作成</option>';
       return html;
     }
+
+    // イベント選択セレクトから離脱せずその場でイベントを作成できるモーダル（table.htmlと同じ設計）。
+    // 対象セレクトで「＋新規イベントを作成」を選ぶとopenNewEventModalが呼ばれ、作成成功後は
+    // 呼び出し元セレクトに新イベントをセットしてchangeイベントを発火する（後続処理は呼び出し元の
+    // changeリスナーに委ねる：確定ボタン用セレクトは選択するだけ、詳細欄のセレクトは即保存される）
+    let newEventTargetSelect = null;
+    let newEventPrevValue = '';
+    function openNewEventModal(selectEl, prevValue) {
+      newEventTargetSelect = selectEl;
+      newEventPrevValue = prevValue;
+      document.getElementById('newEventName').value = '';
+      document.getElementById('newEventErr').style.display = 'none';
+      document.getElementById('newEventCreateBtn').disabled = true;
+      document.getElementById('newEventOverlay').classList.add('show');
+      document.getElementById('newEventName').focus();
+    }
+    function closeNewEventModal(revert) {
+      if (revert && newEventTargetSelect) newEventTargetSelect.value = newEventPrevValue;
+      document.getElementById('newEventOverlay').classList.remove('show');
+      newEventTargetSelect = null;
+    }
+    document.getElementById('newEventCancelBtn').addEventListener('click', () => closeNewEventModal(true));
+    document.getElementById('newEventName').addEventListener('input', (e) => {
+      document.getElementById('newEventCreateBtn').disabled = !e.target.value.trim();
+    });
+    document.getElementById('newEventCreateBtn').addEventListener('click', async () => {
+      const name = document.getElementById('newEventName').value.trim();
+      if (!name) return;
+      const btn = document.getElementById('newEventCreateBtn');
+      const errEl = document.getElementById('newEventErr');
+      btn.disabled = true;
+      errEl.style.display = 'none';
+      try {
+        await window.kakeiboData.saveEvent({ name, budgetScope: 'category' });
+        eventNames.push(name);
+        document.querySelectorAll('.eventSelect, [data-field="event_tag"]').forEach((sel) => {
+          const isEventSelect = sel.classList.contains('eventSelect');
+          const cur = sel.value === '__new__' ? '' : sel.value;
+          sel.innerHTML = isEventSelect ? buildEventOptions(cur) : buildEventTagOptions(cur);
+        });
+        const targetSelect = newEventTargetSelect;
+        closeNewEventModal(false);
+        if (targetSelect) {
+          targetSelect.value = name;
+          targetSelect.dispatchEvent(new Event('change'));
+        }
+      } catch (err) {
+        errEl.textContent = 'エラー: ' + err.message;
+        errEl.style.display = 'block';
+        btn.disabled = false;
+      }
+    });
     function buildPaidByOptions(selected) {
       let html = '<option value=""' + (!selected ? ' selected' : '') + '>未設定</option>';
       window.KAKEIBO_FAMILY_MEMBERS.forEach((m) => { html += '<option value="' + m + '"' + (m === selected ? ' selected' : '') + '>' + m + '</option>'; });
@@ -225,6 +305,12 @@
         saveBtn.addEventListener('click', () => saveUnclassified(card));
       });
       document.querySelectorAll('[data-review-id]').forEach((card) => {
+        const eventSelect = card.querySelector('.eventSelect');
+        let eventPrevValue = eventSelect.value;
+        eventSelect.addEventListener('change', (e) => {
+          if (e.target.value === '__new__') { openNewEventModal(e.target, eventPrevValue); return; }
+          eventPrevValue = e.target.value;
+        });
         card.querySelector('.confirmEventBtn').addEventListener('click', () => saveEventReview(card, false));
         card.querySelector('.noEventBtn').addEventListener('click', () => saveEventReview(card, true));
       });
@@ -253,6 +339,15 @@
         }
         box.querySelectorAll('[data-field]').forEach((el) => {
           if (el === otherCat) return; // カテゴリはサブカテゴリ再構築とセットで上のハンドラが保存する
+          if (el.dataset.field === 'event_tag') {
+            let eventPrevValue = el.value;
+            el.addEventListener('change', () => {
+              if (el.value === '__new__') { openNewEventModal(el, eventPrevValue); return; }
+              eventPrevValue = el.value;
+              saveDetailField(card, box, cardId, 'event_tag', el.value);
+            });
+            return;
+          }
           el.addEventListener('change', () => saveDetailField(card, box, cardId, el.dataset.field, el.value));
         });
       });
