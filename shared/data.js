@@ -996,12 +996,12 @@
     ]);
     return { unpurchased, purchased };
   }
-  async function addShoppingItemFromLiff(name) {
+  async function addShoppingItemFromLiff(name, quantity, deadline) {
     const { data: { session } } = await sb().auth.getSession();
     const res = await fetch('https://gduznhcuyjxxyuhfexek.supabase.co/functions/v1/shopping-classify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ name, quantity: quantity || null, deadline: deadline || null })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'shopping-classify failed');

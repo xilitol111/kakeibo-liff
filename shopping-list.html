@@ -37,7 +37,7 @@
     .itemName { flex: 1; font-size: 15px; }
     .itemQty { font-size: 12px; color: var(--faint); font-weight: normal; margin-left: 2px; }
     .itemName.done { color: var(--faint); text-decoration: line-through; }
-    .itemMeta { font-size: 10.5px; color: var(--faint); }
+    .itemMeta { font-size: 10.5px; color: var(--faint); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .delBtn { flex: none; background: none; border: none; color: var(--danger); font-size: 18px; width: auto; padding: 4px 8px; margin: 0; }
     .sectionLabel { font-size: 12px; color: var(--faint); font-weight: bold; margin: 20px 0 4px; }
     .empty { color: var(--faint); text-align: center; padding: 16px 0; font-size: 13px; }
@@ -52,6 +52,22 @@
     .helpBox { background: var(--accent-soft2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 12px; color: var(--label-muted); white-space: pre-wrap; line-height: 1.7; }
     .categoryHeader { font-size: 12px; color: var(--accent-ink); font-weight: bold; margin: 16px 0 2px; }
     .categoryHeader:first-child { margin-top: 0; }
+    .addBox { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-top: 16px; }
+    .addBox .addRow { margin-top: 0; }
+    .detailsToggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; color: var(--accent-ink); font-weight: bold; background: none; border: none; padding: 2px 0; cursor: pointer; }
+    .detailsToggle .chev { display: inline-block; transition: transform 0.15s ease; }
+    .detailsToggle.open .chev { transform: rotate(90deg); }
+    .detailFields { display: none; gap: 8px; margin-top: 8px; }
+    .detailFields.open { display: flex; }
+    .detailFields .field { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+    .detailFields label { font-size: 10.5px; color: var(--muted); }
+    .detailFields input { padding: 8px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box; background: var(--panel); color: var(--ink); width: 100%; }
+    .deadlineBadge { font-size: 10.5px; font-weight: bold; padding: 1px 6px; border-radius: 5px; background: var(--accent-soft2); color: var(--muted); border: 1px solid var(--border); }
+    .deadlineBadge.soon { background: color-mix(in srgb, #B8860B 16%, var(--bg)); color: #B8860B; border-color: color-mix(in srgb, #B8860B 40%, var(--border)); }
+    .deadlineBadge.overdue { background: color-mix(in srgb, var(--danger) 14%, var(--bg)); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+    @media (prefers-color-scheme: dark) {
+      .deadlineBadge.soon { background: color-mix(in srgb, #E0B84D 16%, var(--bg)); color: #E0B84D; border-color: color-mix(in srgb, #E0B84D 40%, var(--border)); }
+    }
   </style>
 </head>
 <body>
@@ -64,9 +80,22 @@
     <div class="skel skel-item"></div><div class="skel skel-item"></div><div class="skel skel-item"></div>
   </div>
 
-  <div class="addRow">
-    <input type="text" id="newItemInput" placeholder="アイテムを追加" />
-    <button type="button" id="addBtn">追加</button>
+  <div class="addBox">
+    <div class="addRow">
+      <input type="text" id="newItemInput" placeholder="アイテムを追加" />
+      <button type="button" id="addBtn">追加</button>
+    </div>
+    <button type="button" class="detailsToggle" id="detailsToggle"><span class="chev">▸</span> 詳細（数量・期限）</button>
+    <div class="detailFields" id="detailFields">
+      <div class="field">
+        <label>数量（任意）</label>
+        <input type="text" id="newItemQuantity" placeholder="例：1パック" />
+      </div>
+      <div class="field">
+        <label>期限（任意）</label>
+        <input type="date" id="newItemDeadline" />
+      </div>
+    </div>
   </div>
 
   <div class="sectionLabel">購入済み（履歴）</div>
@@ -103,6 +132,14 @@
       if (days >= 3) parts.push(days + '日前〜');
       return parts.join('・');
     }
+    function deadlineBadgeHtml(item) {
+      if (!item.deadline) return '';
+      const todayStart = new Date(new Date().toDateString());
+      const deadlineDate = new Date(item.deadline + 'T00:00:00');
+      const daysLeft = Math.round((deadlineDate - todayStart) / 86400000);
+      const cls = daysLeft < 0 ? 'overdue' : (daysLeft <= 2 ? 'soon' : '');
+      return '<span class="deadlineBadge' + (cls ? ' ' + cls : '') + '">期限 ' + esc(fmtDate(item.deadline)) + '</span>';
+    }
     function setStatus(text, kind) {
       const el = document.getElementById('status');
       el.textContent = text;
@@ -130,7 +167,7 @@
           row.innerHTML =
             '<div class="checkbox" data-id="' + item.id + '" role="checkbox" aria-checked="false" tabindex="0" aria-label="' + esc(item.name) + 'を購入済みにする"></div>' +
             '<div class="itemName">' + esc(item.name) + (item.quantity ? '<span class="itemQty">（' + esc(item.quantity) + '）</span>' : '') + '</div>' +
-            '<div class="itemMeta">' + esc(itemMetaText(item)) + '</div>' +
+            '<div class="itemMeta"><span>' + esc(itemMetaText(item)) + '</span>' + deadlineBadgeHtml(item) + '</div>' +
             '<button class="delBtn" data-id="' + item.id + '" type="button" aria-label="' + esc(item.name) + 'を削除">✕</button>';
           el.appendChild(row);
         });
@@ -210,21 +247,37 @@
     document.getElementById('newItemInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') addItem();
     });
+    document.getElementById('detailsToggle').addEventListener('click', () => {
+      const btn = document.getElementById('detailsToggle');
+      const fields = document.getElementById('detailFields');
+      const open = fields.classList.toggle('open');
+      btn.classList.toggle('open', open);
+    });
 
     async function addItem() {
       const input = document.getElementById('newItemInput');
+      const qtyInput = document.getElementById('newItemQuantity');
+      const deadlineInput = document.getElementById('newItemDeadline');
       const name = input.value.trim();
       if (!name) return;
+      const quantity = qtyInput.value.trim();
+      const deadline = deadlineInput.value;
       setStatus('追加中...', null);
       try {
-        const result = await window.kakeiboData.addShoppingItemFromLiff(name);
+        const result = await window.kakeiboData.addShoppingItemFromLiff(name, quantity, deadline);
         if (result.duplicate) {
           setStatus('「' + result.name + '」は既にリストにあります', 'err');
           return;
         }
         input.value = '';
+        qtyInput.value = '';
+        deadlineInput.value = '';
+        // 追加直後の一覧再取得（loadAll）はせず、返ってきたレコードをそのままローカルの
+        // 一覧に足して再描画する（反映が遅いという指摘への対応）。カテゴリはバックグラウンド
+        // 分類が終わるまで未分類のまま表示され、次回の再読み込みで正しいカテゴリに揃う
+        unpurchasedItems.push(result.item);
+        renderAll();
         setStatus('', null);
-        loadAll();
       } catch (err) {
         setStatus('エラー: ' + err.message, 'err');
       }
