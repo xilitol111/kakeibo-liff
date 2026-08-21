@@ -305,6 +305,73 @@
     return unwrap(await sb().from('asset_snapshots').upsert(records, { onConflict: 'asset_item_id,as_of_date' }).select());
   }
 
+  // ---- 給与所得・ふるさと納税（2026-08-21） ----
+  // income_profiles: 一/成美それぞれの基本給等のプリセット（1人1行）。income_entries: 月ごとの
+  // 変動分（賞与・残業代等）の実績。furusato_donations: ふるさと納税の寄付実績。
+  // asset_items/asset_snapshotsと同じ「プリセット＋時点記録」の構成
+  async function fetchIncomeProfiles() {
+    return unwrap(await sb().from('income_profiles').select('*'));
+  }
+  async function upsertIncomeProfile(member, patch) {
+    const record = Object.assign({ member }, patch, { updated_at: new Date().toISOString() });
+    return unwrap(await sb().from('income_profiles').upsert(record, { onConflict: 'member' }).select())[0];
+  }
+  async function fetchIncomeEntries(yearPrefix) {
+    return unwrap(await sb().from('income_entries').select('*').like('year_month', yearPrefix + '-%'));
+  }
+  async function upsertIncomeEntry(member, yearMonth, patch) {
+    const record = Object.assign({ member, year_month: yearMonth }, patch);
+    return unwrap(await sb().from('income_entries').upsert(record, { onConflict: 'member,year_month' }).select())[0];
+  }
+  async function upsertIncomeEntriesBatch(member, entries) {
+    if (!entries || entries.length === 0) return [];
+    const records = entries.map((e) => ({ member, year_month: e.yearMonth, variable_amount: e.variableAmount, memo: e.memo || null }));
+    return unwrap(await sb().from('income_entries').upsert(records, { onConflict: 'member,year_month' }).select());
+  }
+  async function fetchFurusatoDonations(yearPrefix) {
+    return unwrap(await sb().from('furusato_donations').select('*').gte('donation_date', yearPrefix + '-01-01').lte('donation_date', yearPrefix + '-12-31'));
+  }
+  async function insertFurusatoDonation(record) {
+    return unwrap(await sb().from('furusato_donations').insert(record).select())[0];
+  }
+
+  const INCOME_MEMBERS = ['一', '成美'];
+
+  // income.html初期表示用に、プロフィール・年間実績・寄付実績を取得し、月別・年間の
+  // 手取り推計とふるさと納税上限額の概算までまとめて計算して返す
+  async function getIncomeScreenInitialData(year) {
+    const yearStr = String(year);
+    const [profiles, entries, donations] = await Promise.all([
+      fetchIncomeProfiles(), fetchIncomeEntries(yearStr), fetchFurusatoDonations(yearStr)
+    ]);
+    const result = { year, members: {}, householdAnnualNet: 0, furusatoLimitTotal: 0, furusatoDonatedTotal: 0 };
+    INCOME_MEMBERS.forEach((member) => {
+      const profile = profiles.find((p) => p.member === member) || { member, monthly_base_salary: 0, dependents_count: 0, is_over_40: false };
+      const monthly = [];
+      let annualGross = 0;
+      for (let m = 1; m <= 12; m++) {
+        const ym = yearStr + '-' + String(m).padStart(2, '0');
+        const entry = entries.find((e) => e.member === member && e.year_month === ym);
+        const variable = entry ? entry.variable_amount : 0;
+        const gross = (profile.monthly_base_salary || 0) + variable;
+        annualGross += gross;
+        // 月次の手取りは「その月の額面が1年続いたと仮定した場合」の年間推計を12等分する近似値。
+        // 賞与月は税率区分が上がるぶん手取り率がやや下がる、という実態に近い挙動になる
+        const monthCalc = estimateAnnualTakeHome(gross * 12, profile.dependents_count, profile.is_over_40);
+        monthly.push({ yearMonth: ym, month: m, gross, variable, net: Math.round(monthCalc.net / 12), memo: entry ? entry.memo : null });
+      }
+      const annualCalc = estimateAnnualTakeHome(annualGross, profile.dependents_count, profile.is_over_40);
+      const furusatoLimit = estimateFurusatoLimit(annualGross, profile.dependents_count, profile.is_over_40);
+      const donated = donations.filter((d) => d.member === member).reduce((s, d) => s + d.amount, 0);
+      result.members[member] = { profile, monthly, annualGross, annualNet: annualCalc.net, annualCalc, furusatoLimit, donated };
+      result.householdAnnualNet += annualCalc.net;
+      result.furusatoLimitTotal += furusatoLimit;
+      result.furusatoDonatedTotal += donated;
+    });
+    result.donations = donations;
+    return result;
+  }
+
   // ---- 純粋な計算ロジック（gas/SettlementClient.gs等と同一） ----
 
   function calculateSettlement(totalSharedAmount, paidKazuichi, paidNarumi, ratioKazuichi, ratioNarumi, owedByKazuichi, owedByNarumi) {
@@ -323,6 +390,55 @@
       transferTo: diffKazuichi >= 0 ? '一' : '成美',
       transferAmount: Math.abs(diffKazuichi)
     };
+  }
+
+  // ---- 給与所得の手取り推計・ふるさと納税控除上限額の概算（2026-08-21） ----
+  // 簡易な速算式による概算。実際の源泉徴収額・住民税決定額とは異なる（特に住民税は前年所得
+  // ベースで決まるため、当年給与からの推計はあくまで参考値）。社会保険料率・所得税の速算表は
+  // 2026年時点の一般的な目安を使用しており、将来料率が変わった場合はここの定数を更新すること
+  const SOCIAL_INSURANCE_RATE_BASE = 0.0915 + 0.0500 + 0.006; // 厚生年金9.15%+健康保険5.00%(協会けんぽ全国平均目安)+雇用保険0.6%（いずれも被保険者負担分）
+  const SOCIAL_INSURANCE_RATE_OVER40 = SOCIAL_INSURANCE_RATE_BASE + 0.008; // 40歳以上は介護保険0.80%を加算
+
+  function salaryIncomeDeduction_(annualGross) {
+    if (annualGross <= 1625000) return 550000;
+    if (annualGross <= 1800000) return Math.round(annualGross * 0.4 - 100000);
+    if (annualGross <= 3600000) return Math.round(annualGross * 0.3 + 80000);
+    if (annualGross <= 6600000) return Math.round(annualGross * 0.2 + 440000);
+    if (annualGross <= 8500000) return Math.round(annualGross * 0.1 + 1100000);
+    return 1950000;
+  }
+  function incomeTaxBracket_(taxableIncome) {
+    if (taxableIncome <= 1950000) return { rate: 0.05, deduction: 0 };
+    if (taxableIncome <= 3300000) return { rate: 0.10, deduction: 97500 };
+    if (taxableIncome <= 6950000) return { rate: 0.20, deduction: 427500 };
+    if (taxableIncome <= 9000000) return { rate: 0.23, deduction: 636000 };
+    if (taxableIncome <= 18000000) return { rate: 0.33, deduction: 1536000 };
+    if (taxableIncome <= 40000000) return { rate: 0.40, deduction: 2796000 };
+    return { rate: 0.45, deduction: 4796000 };
+  }
+  // annualGross: 額面年収（円）。dependentsCount: 扶養人数。isOver40: 介護保険の対象か
+  function estimateAnnualTakeHome(annualGross, dependentsCount, isOver40) {
+    dependentsCount = dependentsCount || 0;
+    const socialInsuranceRate = isOver40 ? SOCIAL_INSURANCE_RATE_OVER40 : SOCIAL_INSURANCE_RATE_BASE;
+    const socialInsurance = Math.round(annualGross * socialInsuranceRate);
+    const salaryIncome = Math.max(0, annualGross - salaryIncomeDeduction_(annualGross));
+    const basicDeduction = 480000;
+    const dependentDeduction = dependentsCount * 380000;
+    const taxableIncome = Math.max(0, Math.floor((salaryIncome - basicDeduction - dependentDeduction - socialInsurance) / 1000) * 1000);
+    const bracket = incomeTaxBracket_(taxableIncome);
+    const incomeTaxBase = Math.max(0, Math.round(taxableIncome * bracket.rate - bracket.deduction));
+    const incomeTax = Math.round(incomeTaxBase * 1.021); // 復興特別所得税込み
+    const residentTax = Math.round(taxableIncome * 0.10 + 5000); // 所得割10%（市町村6%+道府県4%）+均等割概算
+    const net = annualGross - socialInsurance - incomeTax - residentTax;
+    return { annualGross, socialInsurance, incomeTax, residentTax, net, taxableIncome, marginalTaxRate: bracket.rate };
+  }
+  // ふるさと納税の控除上限額（総務省の簡易速算式：住民税所得割額×20%÷(90%－所得税率×1.021)＋2000円）
+  function estimateFurusatoLimit(annualGross, dependentsCount, isOver40) {
+    const t = estimateAnnualTakeHome(annualGross, dependentsCount, isOver40);
+    const residentTaxIncomeBased = Math.round(t.taxableIncome * 0.10);
+    const denom = 0.9 - t.marginalTaxRate * 1.021;
+    if (denom <= 0 || residentTaxIncomeBased <= 0) return 0;
+    return Math.max(0, Math.round((residentTaxIncomeBased * 0.2) / denom + 2000));
   }
 
   function calculateSettlementVariant_(row, suffix) {
@@ -1435,6 +1551,9 @@
     saveAssetTermConditions, removeAssetTermConditions,
     getLoanDetailScreenData, saveLoanRateChange, removeLoanRateChange,
     saveAssetGoal, removeAssetGoal,
+    // income / furusato nozei
+    getIncomeScreenInitialData, upsertIncomeProfile, upsertIncomeEntry, upsertIncomeEntriesBatch, insertFurusatoDonation,
+    estimateAnnualTakeHome, estimateFurusatoLimit,
     // usage monitoring
     getUsageMonitoringData
   };
