@@ -86,11 +86,15 @@
     .fieldRow { display: flex; gap: 8px; }
     .fieldRow > * { flex: 1; }
     .checkField { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin: 10px 0 2px; }
-    .monthRow { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+    .monthRow { padding: 9px 0; border-bottom: 1px solid var(--border); }
     .monthRow:last-child { border-bottom: none; }
-    .monthRow .m { width: 34px; flex: none; font-size: 12.5px; color: var(--muted); font-weight: bold; }
-    .monthRow input { margin: 0; flex: 1; }
-    .monthRow .netHint { width: 84px; flex: none; text-align: right; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+    .monthRow .monthHead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+    .monthRow .m { font-size: 12.5px; color: var(--ink); font-weight: bold; }
+    .monthRow .netHint { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+    .monthRow .monthFields { display: flex; gap: 6px; }
+    .monthRow .monthFields .f { flex: 1; min-width: 0; }
+    .monthRow .monthFields label { display: block; font-size: 9.5px; color: var(--muted); margin: 0 0 2px; font-weight: normal; }
+    .monthRow .monthFields input { margin: 0; padding: 6px 7px; font-size: 12px; }
     .donationRow { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 12.5px; }
     .donationRow:last-child { border-bottom: none; }
     .donationRow .amt { font-weight: bold; font-variant-numeric: tabular-nums; }
@@ -125,7 +129,7 @@
       <div class="row total"><span class="lbl">手取り目安（年間）</span><span class="val" id="mNet">-</span></div>
     </div>
 
-    <div class="sectionLabel">月別の変動分（賞与・残業代など、任意）</div>
+    <div class="sectionLabel">月別の実績（基本給が変わった月だけ上書き・残業代・各種補助）</div>
     <div class="card">
       <div id="monthList"></div>
       <button type="button" class="primary" id="saveMonthsBtn">月別実績を保存</button>
@@ -259,7 +263,8 @@
         const hit = svgEl('rect', { x: (cx - gap / 2).toFixed(1), y: padT, width: gap.toFixed(1), height: plotH.toFixed(1), fill: 'transparent', style: 'cursor:pointer' });
         const show = (ev) => {
           ev.stopPropagation();
-          tooltip.textContent = mo.month + '月：' + yen(mo.net) + (mo.variable ? '（変動分 ' + yen(mo.variable) + '含む）' : '');
+          const extra = (mo.overtime ? '残業代' + yen(mo.overtime) + ' ' : '') + (mo.allowance ? '補助' + yen(mo.allowance) : '');
+          tooltip.textContent = mo.month + '月：' + yen(mo.net) + (extra ? '（' + extra.trim() + '）' : '');
           tooltip.style.left = (cx / w * 100) + '%';
           tooltip.style.top = ((baseY - barH) / h * 100) + '%';
           tooltip.style.transform = 'translate(-50%,-125%)';
@@ -329,10 +334,12 @@
       const monthList = document.getElementById('monthList');
       monthList.innerHTML = data.monthly.map((mo) =>
         '<div class="monthRow" data-month="' + mo.month + '">' +
-        '<div class="m">' + mo.month + '月</div>' +
-        '<input type="number" class="varInput" value="' + mo.variable + '" placeholder="変動分" />' +
-        '<div class="netHint">手取り目安 ' + yen(mo.net) + '</div>' +
-        '</div>'
+        '<div class="monthHead"><span class="m">' + mo.month + '月</span><span class="netHint">手取り目安 ' + yen(mo.net) + '</span></div>' +
+        '<div class="monthFields">' +
+        '<div class="f"><label>基本給</label><input type="number" class="baseInput" placeholder="' + (data.profile.monthly_base_salary || 0) + '" value="' + (mo.baseSalary !== (data.profile.monthly_base_salary || 0) ? mo.baseSalary : '') + '" /></div>' +
+        '<div class="f"><label>残業代</label><input type="number" class="overtimeInput" value="' + (mo.overtime || '') + '" /></div>' +
+        '<div class="f"><label>各種補助</label><input type="number" class="allowanceInput" value="' + (mo.allowance || '') + '" /></div>' +
+        '</div></div>'
       ).join('');
 
       showView('member');
@@ -385,10 +392,15 @@
     document.getElementById('saveMonthsBtn').addEventListener('click', async () => {
       if (!activeMember) return;
       const rows = document.querySelectorAll('#monthList .monthRow');
-      const entries = Array.from(rows).map((row) => ({
-        yearMonth: YEAR + '-' + String(row.dataset.month).padStart(2, '0'),
-        variableAmount: Number(row.querySelector('.varInput').value) || 0
-      }));
+      const entries = Array.from(rows).map((row) => {
+        const baseVal = row.querySelector('.baseInput').value;
+        return {
+          yearMonth: YEAR + '-' + String(row.dataset.month).padStart(2, '0'),
+          baseSalaryOverride: baseVal === '' ? null : Number(baseVal),
+          overtimeAmount: Number(row.querySelector('.overtimeInput').value) || 0,
+          allowanceAmount: Number(row.querySelector('.allowanceInput').value) || 0
+        };
+      });
       setStatus('保存中...', null);
       try {
         await window.kakeiboData.upsertIncomeEntriesBatch(activeMember, entries);

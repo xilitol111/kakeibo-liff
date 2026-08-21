@@ -307,7 +307,9 @@
 
   // ---- 給与所得・ふるさと納税（2026-08-21） ----
   // income_profiles: 一/成美それぞれの基本給等のプリセット（1人1行）。income_entries: 月ごとの
-  // 変動分（賞与・残業代等）の実績。furusato_donations: ふるさと納税の寄付実績。
+  // 実績（base_salary_override＝昇給等があった月だけ入力する基本給の上書き、無指定なら
+  // income_profiles.monthly_base_salaryを使う／overtime_amount＝残業代／allowance_amount＝
+  // 各種手当）。furusato_donations: ふるさと納税の寄付実績。
   // asset_items/asset_snapshotsと同じ「プリセット＋時点記録」の構成
   async function fetchIncomeProfiles() {
     return unwrap(await sb().from('income_profiles').select('*'));
@@ -325,7 +327,13 @@
   }
   async function upsertIncomeEntriesBatch(member, entries) {
     if (!entries || entries.length === 0) return [];
-    const records = entries.map((e) => ({ member, year_month: e.yearMonth, variable_amount: e.variableAmount, memo: e.memo || null }));
+    const records = entries.map((e) => ({
+      member, year_month: e.yearMonth,
+      base_salary_override: (e.baseSalaryOverride === '' || e.baseSalaryOverride == null) ? null : e.baseSalaryOverride,
+      overtime_amount: e.overtimeAmount || 0,
+      allowance_amount: e.allowanceAmount || 0,
+      memo: e.memo || null
+    }));
     return unwrap(await sb().from('income_entries').upsert(records, { onConflict: 'member,year_month' }).select());
   }
   async function fetchFurusatoDonations(yearPrefix) {
@@ -352,13 +360,18 @@
       for (let m = 1; m <= 12; m++) {
         const ym = yearStr + '-' + String(m).padStart(2, '0');
         const entry = entries.find((e) => e.member === member && e.year_month === ym);
-        const variable = entry ? entry.variable_amount : 0;
-        const gross = (profile.monthly_base_salary || 0) + variable;
+        const baseSalary = (entry && entry.base_salary_override != null) ? entry.base_salary_override : (profile.monthly_base_salary || 0);
+        const overtime = entry ? (entry.overtime_amount || 0) : 0;
+        const allowance = entry ? (entry.allowance_amount || 0) : 0;
+        const gross = baseSalary + overtime + allowance;
         annualGross += gross;
         // 月次の手取りは「その月の額面が1年続いたと仮定した場合」の年間推計を12等分する近似値。
         // 賞与月は税率区分が上がるぶん手取り率がやや下がる、という実態に近い挙動になる
         const monthCalc = estimateAnnualTakeHome(gross * 12, profile.dependents_count, profile.is_over_40);
-        monthly.push({ yearMonth: ym, month: m, gross, variable, net: Math.round(monthCalc.net / 12), memo: entry ? entry.memo : null });
+        monthly.push({
+          yearMonth: ym, month: m, gross, baseSalary, overtime, allowance,
+          net: Math.round(monthCalc.net / 12), memo: entry ? entry.memo : null
+        });
       }
       const annualCalc = estimateAnnualTakeHome(annualGross, profile.dependents_count, profile.is_over_40);
       const furusatoLimit = estimateFurusatoLimit(annualGross, profile.dependents_count, profile.is_over_40);
@@ -396,8 +409,15 @@
   // 簡易な速算式による概算。実際の源泉徴収額・住民税決定額とは異なる（特に住民税は前年所得
   // ベースで決まるため、当年給与からの推計はあくまで参考値）。社会保険料率・所得税の速算表は
   // 2026年時点の一般的な目安を使用しており、将来料率が変わった場合はここの定数を更新すること
-  const SOCIAL_INSURANCE_RATE_BASE = 0.0915 + 0.0500 + 0.006; // 厚生年金9.15%+健康保険5.00%(協会けんぽ全国平均目安)+雇用保険0.6%（いずれも被保険者負担分）
-  const SOCIAL_INSURANCE_RATE_OVER40 = SOCIAL_INSURANCE_RATE_BASE + 0.008; // 40歳以上は介護保険0.80%を加算
+  // 2026-08-21: 「大阪府大阪市で精緻化して」との要望を受け、全国平均目安から協会けんぽ大阪支部の
+  // 令和8年度（2026年度）実際の料率に置き換えた（3月分/4月納付分から適用）。
+  // 出典：協会けんぽ「令和8年度都道府県毎の保険料率」（大阪：健康保険料率10.13%・介護保険料率
+  // 1.62%）、厚生労働省・各社労士事務所の令和8年度雇用保険料率案内（一般の事業・被保険者負担
+  // 0.5%）。健康保険料率は都道府県単位（大阪府内で市区町村による差は無い）。2026年4月分からは
+  // 子ども・子育て支援金（協会けんぽ平均0.23%程度、労使折半）が別途上乗せされる予定だが、
+  // 家計簿の概算ツールとしては金額が小さいため未反映（数百円/月の誤差要因として許容）
+  const SOCIAL_INSURANCE_RATE_BASE = 0.0915 + 0.05065 + 0.005; // 厚生年金9.15%（全国一律）+健康保険5.065%（大阪、10.13%の被保険者負担分）+雇用保険0.5%（一般の事業、被保険者負担分）
+  const SOCIAL_INSURANCE_RATE_OVER40 = SOCIAL_INSURANCE_RATE_BASE + 0.0081; // 40歳以上は介護保険0.81%を加算（1.62%の被保険者負担分、全国一律）
 
   function salaryIncomeDeduction_(annualGross) {
     if (annualGross <= 1625000) return 550000;
@@ -428,7 +448,7 @@
     const bracket = incomeTaxBracket_(taxableIncome);
     const incomeTaxBase = Math.max(0, Math.round(taxableIncome * bracket.rate - bracket.deduction));
     const incomeTax = Math.round(incomeTaxBase * 1.021); // 復興特別所得税込み
-    const residentTax = Math.round(taxableIncome * 0.10 + 5000); // 所得割10%（市町村6%+道府県4%）+均等割概算
+    const residentTax = Math.round(taxableIncome * 0.10 + 5300); // 所得割10%（大阪市は市民税8%+府民税2%、政令指定都市の按分だが合計は標準の10%）+均等割5,300円（大阪市：市民税3,000円+府民税1,300円〈+300円加算〉+森林環境税1,000円、令和8年度）
     const net = annualGross - socialInsurance - incomeTax - residentTax;
     return { annualGross, socialInsurance, incomeTax, residentTax, net, taxableIncome, marginalTaxRate: bracket.rate };
   }
